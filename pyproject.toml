@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "pydantic_sqlite"
+version = "0.1.0"
+description = "Simple package for storing pydantic BaseModels in an in-memory SQLite database."
+authors = ["Your Name <you@example.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/Phil997/pydantic-sqlite"
+keywords = ["pydantic", "sqlite-utils", "sqlite3"]
+include = [
+    "LICENSE",
+]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+pydantic = "^1.8.2"
+sqlite-utils = "^3.19"
+
+[tool.poetry.dev-dependencies]
+isort = "^5.10.1"
+flake8 = "^4.0.1"
+ipython = "^7.30.1"
+jupyter = "^1.0.0"
+pytest = "^6.2.5"
+hypothesis = "^6.31.6"
+testfixtures = "^6.18.3"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
