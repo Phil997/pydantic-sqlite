@@ -76,14 +76,14 @@ class DataBase():
                 # if the field is already in the Table it continues, but if is it not in the table it will add this to the table
                 # !recursive call to self.add
 
-                if x := field_name not in foreign_tables.keys():
+                if field_name not in foreign_tables.keys():
                     keys = list(foreign_tables.keys())
-                    raise KeyError(f"detect field of Type BaseModel, but can not find '{x}' in foreign_tables (Keys: {keys})") from None
+                    raise KeyError(f"detect field of Type BaseModel, but can not find '{field_name}' in foreign_tables (Keys: {keys})") from None
                 else:
                     foreign_table_name = foreign_tables[field_name]
 
-                if x := foreign_table_name not in self._db.table_names():
-                    raise KeyError(f"Can not add a value, which has a foreign Key '{foreign_tables}' to a Table '{x}' which does not exists")
+                if foreign_table_name not in self._db.table_names():
+                    raise KeyError(f"Can not add a value, which has a foreign Key '{foreign_tables}' to a Table '{foreign_table_name}' which does not exists")
 
                 if not self.value_in_table(foreign_table_name, field_value):
                     # the nested BaseModel is not in the foreign Table and has to be added
