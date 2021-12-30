@@ -1,6 +1,10 @@
 # pydantic_sqlite
 Simple package for storing pydantic BaseModels in an in-memory SQLite database.
 
+## Installation
+
+    pip install pydantic-sqlite
+
 ## Basic Example
 Create two objects of the type TestCase and add them to the database in the table 'Test'. Later, all values in the table are printed while iteration over the Table 'Test'.
 
