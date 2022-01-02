@@ -1,3 +1,4 @@
+from typing import List
 from uuid import uuid4
 
 from pydantic import BaseModel, validator
@@ -16,6 +17,9 @@ class Baz(BaseModel):
     uuid: str
     bar: Bar
 
+class FooList(BaseModel):
+    uuid: str
+    testcase: List[Foo]
 
 class Hello(BaseModel):
     name: str
@@ -69,6 +73,20 @@ def test_nested_BaseModels_Level_2():
 
     db.add('Baz', baz, foreign_tables={"bar": "Bar"})
     assert db.value_in_table('Baz', baz)
+
+def test_nested_BaseModels_in_Typing_List():
+    db = DataBase()
+
+    foo1 = Foo(uuid=str(uuid4()), name="unitest")
+    foo2 = Foo(uuid=str(uuid4()), name="unitest")
+    ex = FooList(uuid=str(uuid4()), testcase=[foo1, foo2])
+
+    db.add('Foo', foo1)
+    db.add('Foo', foo2)
+    db.add('FooList', ex, foreign_tables={'testcase': 'Foo'})
+
+    assert db.value_in_table('FooList', ex)
+    assert [foo1, foo2] == db.value_from_table('FooList', ex.uuid).testcase
 
 def test_skip_nested():
     db = DataBase()

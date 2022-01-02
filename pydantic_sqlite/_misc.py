@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 
 def remove_file(name):
@@ -14,3 +15,15 @@ def uniquify(path):
         counter += 1
 
     return path
+
+def isiterable(obj):
+    if isinstance(obj, List):
+        return True
+    else:
+        return False
+
+def iterable_in_type_repr(type_repr):
+    if 'List' in type_repr: 
+        return True
+    else:
+        return False
