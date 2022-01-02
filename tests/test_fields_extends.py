@@ -1,5 +1,5 @@
 from random import choice
-from typing import Any, List, Literal
+from typing import Any, List, Literal, Optional, Union
 from uuid import uuid4
 
 from hypothesis import given
@@ -13,6 +13,9 @@ class Example(BaseModel):
     uuid: str
     ex_Literal: Literal['hello', 'hi', 'hey']
     ex_list_any: List[Any]
+    ex_any: Any
+    ex_optional: Optional[str]
+    ex_union: Union[str, int]
 
 @st.composite
 def example_values(draw):
@@ -20,6 +23,9 @@ def example_values(draw):
         uuid=uuid4().__str__(),
         ex_Literal=draw(st.sampled_from(VALID_LITERALS)),
         ex_list_any=draw(st.lists(st.text())),
+        ex_any=draw(st.text()),
+        ex_optional=draw(st.sampled_from(elements=[draw(st.text()), None])),
+        ex_union=draw(st.sampled_from(elements=[draw(st.text()), draw(st.integers())])),
     )
 
 @given(example_values())
@@ -32,6 +38,7 @@ def test_save_and_get_while_iterration(values):
         assert issubclass(x.__class__, BaseModel)
         assert isinstance(x, Example)
         assert x == test1
+        assert x.ex_optional == None or isinstance(x.ex_optional, str)
 
 @given(example_values())
 def test_save_and_get_from_table(values):
@@ -43,6 +50,7 @@ def test_save_and_get_from_table(values):
     assert issubclass(x.__class__, BaseModel)
     assert isinstance(x, Example)
     assert x == test1
+    assert x.ex_optional == None or isinstance(x.ex_optional, str)
 
 @given(example_values())
 def test_save_and_check_is_in_table(values):
@@ -66,6 +74,7 @@ def test_save_and_get_while_iterration_multiple(values):
         assert issubclass(value.__class__, BaseModel)
         assert isinstance(value, Example)
         assert value in examples
+        assert value.ex_optional is None or isinstance(value.ex_optional, str)
     assert len(examples) == len(db_values)
 
 @given(st.lists(example_values(), min_size=1))

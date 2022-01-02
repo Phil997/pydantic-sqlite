@@ -9,10 +9,14 @@ from typing import Generator, List
 from pydantic import BaseModel, root_validator
 from pydantic.fields import ModelField
 from sqlite_utils import Database as _Database
+from typing_inspect import is_literal_type, is_union_type
 
 from ._misc import remove_file
 
-SPECIALFORM = (typing.Any, typing.NoReturn, typing.ClassVar, typing.Union, typing.Optional)
+SPECIALTYPE = [
+    typing.Any, 
+    typing.Literal,
+    typing.Union]
 
 class TableBaseModel(BaseModel):
     table: str
@@ -73,7 +77,7 @@ class DataBase():
             if special_insert:  # Special Insert with SQConfig.convert
                 data_for_save[field_name] = field_class.SQConfig.convert(field_value)
 
-            elif field.type_ in SPECIALFORM or typing.get_origin(field.type_):  
+            elif field.type_ in SPECIALTYPE or typing.get_origin(field.type_):  
                 # typing._SpecialForm: Any, NoReturn, ClassVar, Union, Optional
                 # typing.get_origin(field.type_) -> e.g. Literal
                 data_for_save[field_name] = self._typing_conversion(field, field_value)
@@ -193,5 +197,9 @@ class DataBase():
     def _typing_conversion(self, field: ModelField, field_value: typing) -> typing.Any:
         if field.type_ == typing.Any:
             return field_value
-        elif field.type_.__origin__ is typing.Literal:
+        elif is_union_type(field.type_):
             return str(field_value)
+        elif is_literal_type(field.type_):
+            return str(field_value)
+        else:
+            raise NotImplementedError(f"type {field.type_} is not supported yet")
