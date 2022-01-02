@@ -1,5 +1,5 @@
 from random import choice
-from typing import Literal
+from typing import Any, List, Literal
 from uuid import uuid4
 
 from hypothesis import given
@@ -12,12 +12,14 @@ VALID_LITERALS = ['hello', 'hi', 'hey']
 class Example(BaseModel):
     uuid: str
     ex_Literal: Literal['hello', 'hi', 'hey']
+    ex_list_any: List[Any]
 
 @st.composite
 def example_values(draw):
     return dict(
         uuid=uuid4().__str__(),
-        ex_Literal=draw(st.sampled_from(VALID_LITERALS))
+        ex_Literal=draw(st.sampled_from(VALID_LITERALS)),
+        ex_list_any=draw(st.lists(st.text())),
     )
 
 @given(example_values())

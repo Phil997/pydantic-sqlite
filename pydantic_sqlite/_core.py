@@ -1,19 +1,22 @@
 import importlib
+import inspect
 import json
 import os
 import sqlite3
 import typing
-from typing import Any, Generator, List
+from typing import Generator, List
 
 from pydantic import BaseModel, root_validator
+from pydantic.fields import ModelField
 from sqlite_utils import Database as _Database
 
 from ._misc import remove_file
 
+SPECIALFORM = (typing.Any, typing.NoReturn, typing.ClassVar, typing.Union, typing.Optional)
 
 class TableBaseModel(BaseModel):
     table: str
-    moduleclass: Any
+    moduleclass: typing.Any
     modulename: str
     pks: List[str]
 
@@ -45,7 +48,7 @@ class DataBase():
         except KeyError:
             raise KeyError(f"can not find Table: {tablename} in Database") from None
         for row in self._db[tablename].rows:
-            yield self._build_basemodel_from_json(basemodel, row, foreign_refs)
+            yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
 
     def add(self, tablename: str, value: BaseModel, pk: str = "uuid", foreign_tables={}) -> None:
         """adds a new value to the table tablename"""
@@ -55,8 +58,9 @@ class DataBase():
             self._basemodels_add_model(table=tablename, moduleclass=value.__class__, pks=[pk])
 
         # check whether the value matches the basemodels in the table
-        if x := not self._basemodels[tablename].moduleclass == type(value):
-            raise ValueError(f"Can not add type '{type(value)}' to the table '{tablename}', which contains values of type '{x}'")
+        if not self._basemodels[tablename].moduleclass == type(value):
+            raise ValueError(
+                f"Can not add type '{type(value)}' to the table '{tablename}', which contains values of type '{self._basemodels[tablename].moduleclass}'")
 
         # create dict for writing to the Table
         data_for_save = value.__dict__ if not hasattr(value, "sqlite_repr") else value.sqlite_repr
@@ -68,9 +72,12 @@ class DataBase():
 
             if special_insert:  # Special Insert with SQConfig.convert
                 data_for_save[field_name] = field_class.SQConfig.convert(field_value)
-            elif typing.get_origin(field.type_):  # Field is of Type typing
-                if field.type_.__origin__ is typing.Literal:
-                    data_for_save[field_name] = str(field_value)
+
+            elif field.type_ in SPECIALFORM or typing.get_origin(field.type_):  
+                # typing._SpecialForm: Any, NoReturn, ClassVar, Union, Optional
+                # typing.get_origin(field.type_) -> e.g. Literal
+                data_for_save[field_name] = self._typing_conversion(field, field_value)
+
             elif issubclass(field.type_, BaseModel):  # Field is of BaseModel
                 # the value has got a field which is of type BaseModel, so this filed must be in a foreign table
                 # if the field is already in the Table it continues, but if is it not in the table it will add this to the table
@@ -109,7 +116,7 @@ class DataBase():
         """checks if the given value is in the table"""
         return self.uuid_in_table(tablename, value.uuid)
 
-    def value_from_table(self, tablename: str, uuid: str) -> Any:
+    def value_from_table(self, tablename: str, uuid: str) -> typing.Any:
         """searchs the Objekt with the given uuid in the table and returns it. Returns a subclass of type pydantic.BaseModel"""
         hits = [row for row in self._db[tablename].rows_where("uuid = ?", [uuid])]
         if len(hits) > 1:
@@ -117,7 +124,7 @@ class DataBase():
  
         model = self._basemodels[tablename]
         foreign_refs = {key.column: key.other_table for key in self._db[tablename].foreign_keys}
-        return None if not hits else self._build_basemodel_from_json(model, hits[0], foreign_refs=foreign_refs)
+        return None if not hits else self._build_basemodel_from_dict(model, hits[0], foreign_refs=foreign_refs)
 
     def values_in_table(self, tablename) -> int:
         """returns the number of values in the Table"""
@@ -162,12 +169,29 @@ class DataBase():
         self._basemodels.update({kwargs['table']: model})
         self._db["__basemodels__"].upsert(model.data(), pk="modulename")
 
-    def _build_basemodel_from_json(self, basemodel, row: dict, foreign_refs):
+    def _build_basemodel_from_dict(self, basemodel: TableBaseModel, row: dict, foreign_refs: dict):
+        # returns a subclass object of type BaseModel wich is build out of class basemodel.moduleclass and the data out of the dict
+
+        # Get Informations for the fiels in the basemodel object
+        members = inspect.getmembers(basemodel.moduleclass, lambda a: not(inspect.isroutine(a)))
+        field_models = next(line[1] for line in members if '__fields__' in line)
+
         d = {}
         for col_name, value in row.items():
-            if col_name in foreign_refs.keys():
+            if col_name in foreign_refs.keys():  # the column contains another subclass of BaseModel
                 foreign_value = self.value_from_table(foreign_refs[col_name], value)
                 d.update({col_name: foreign_value})
-            else:
-                d.update({col_name: value})
+            else:  
+                type_repr = field_models[col_name].__str__().split(' ')[1]  # 'type=Any'
+                # check if the value is something of typing
+                if 'List' in type_repr:  # 'type=List[Any]'
+                    d.update({col_name: json.loads(value)})
+                else:
+                    d.update({col_name: value})
         return basemodel.moduleclass(**d)
+
+    def _typing_conversion(self, field: ModelField, field_value: typing) -> typing.Any:
+        if field.type_ == typing.Any:
+            return field_value
+        elif field.type_.__origin__ is typing.Literal:
+            return str(field_value)
