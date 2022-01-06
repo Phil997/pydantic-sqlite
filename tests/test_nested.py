@@ -83,3 +83,29 @@ def test_skip_nested():
     db.add('Worlds', world)
     assert db.value_in_table('Worlds', world)
     db.value_from_table('Worlds', world.uuid)
+
+def test_update_the_nested_model():
+    db = DataBase()
+    foo = Foo(uuid=str(uuid4()), name="unitest")
+    bar = Bar(uuid=str(uuid4()), foo=foo)
+
+    db.add('Foo', foo)
+    db.add('Bar', bar, foreign_tables={"foo": "Foo"})
+
+    bar.foo.name = "new_value"
+    db.add('Bar', bar, foreign_tables={"foo": "Foo"})
+
+    assert db.value_from_table('Bar', bar.uuid).foo.name == "new_value"
+
+def test_update_the_nested_model_indirect():
+    db = DataBase()
+    foo = Foo(uuid=str(uuid4()), name="unitest")
+    bar = Bar(uuid=str(uuid4()), foo=foo)
+
+    db.add('Foo', foo)
+    db.add('Bar', bar, foreign_tables={"foo": "Foo"})
+
+    foo.name = "new_value"
+    db.add('Foo', foo)
+
+    assert db.value_from_table('Bar', bar.uuid).foo.name == "new_value"
