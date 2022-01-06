@@ -16,7 +16,6 @@ class Baz(BaseModel):
     uuid: str
     bar: Bar
 
-
 class Hello(BaseModel):
     name: str
 
@@ -54,6 +53,7 @@ def test_nested_BaseModels_Level_1():
 
     db.add('Bar', bar, foreign_tables={"foo": "Foo"})
     assert db.value_in_table('Bar', bar)
+    assert isinstance(bar.foo, Foo)
 
 def test_nested_BaseModels_Level_2():
     db = DataBase()
@@ -66,9 +66,14 @@ def test_nested_BaseModels_Level_2():
 
     db.add('Bar', bar, foreign_tables={"foo": "Foo"})
     assert db.value_in_table('Bar', bar)
+    assert isinstance(bar.foo, Foo)
+    assert bar.foo.name == "unitest"
 
     db.add('Baz', baz, foreign_tables={"bar": "Bar"})
     assert db.value_in_table('Baz', baz)
+    assert isinstance(baz.bar, Bar)
+    assert isinstance(baz.bar.foo, Foo)
+    assert baz.bar.foo.name == "unitest"
 
 def test_skip_nested():
     db = DataBase()

@@ -59,7 +59,7 @@ class DataBase():
             raise ValueError(f"Can not add type '{type(value)}' to the table '{tablename}', which contains values of type '{x}'")
 
         # create dict for writing to the Table
-        data_for_save = value.__dict__ if not hasattr(value, "sqlite_repr") else value.sqlite_repr
+        data_for_save = value.dict() if not hasattr(value, "sqlite_repr") else value.sqlite_repr
         foreign_keys = []
         for field_name, field in value.__fields__.items():
             field_value = getattr(value, field_name)
