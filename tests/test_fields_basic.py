@@ -1,4 +1,5 @@
 from random import choice
+from typing import List
 from uuid import uuid4
 
 from hypothesis import given
@@ -18,6 +19,7 @@ class Example(BaseModel):
     ex_int: int
     ex_float: float
     ex_bool: bool
+    ex_list: List[str]
 
 @st.composite
 def example_values(draw):
@@ -26,7 +28,8 @@ def example_values(draw):
         ex_str=draw(st.text()),
         ex_int=draw(st.integers(min_value=SQLITE_INTEGERS_MIN, max_value=SQLITE_INTEGERS_MAX)),
         ex_float=draw(st.floats(min_value=SQLITE_FLOAT_MIN, max_value=SQLITE_FLOAT_MAX)),
-        ex_bool=draw(st.booleans())
+        ex_bool=draw(st.booleans()),
+        ex_list=draw(st.lists(st.text())),
     )
 
 
