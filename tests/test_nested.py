@@ -58,6 +58,7 @@ def test_nested_BaseModels_Level_1():
 
     db.add('Bar', bar, foreign_tables={"foo": "Foo"})
     assert db.value_in_table('Bar', bar)
+    assert isinstance(bar.foo, Foo)
 
 def test_nested_BaseModels_Level_2():
     db = DataBase()
@@ -70,9 +71,14 @@ def test_nested_BaseModels_Level_2():
 
     db.add('Bar', bar, foreign_tables={"foo": "Foo"})
     assert db.value_in_table('Bar', bar)
+    assert isinstance(bar.foo, Foo)
+    assert bar.foo.name == "unitest"
 
     db.add('Baz', baz, foreign_tables={"bar": "Bar"})
     assert db.value_in_table('Baz', baz)
+    assert isinstance(baz.bar, Bar)
+    assert isinstance(baz.bar.foo, Foo)
+    assert baz.bar.foo.name == "unitest"
 
 def test_nested_BaseModels_in_Typing_List():
     db = DataBase()
@@ -96,3 +102,29 @@ def test_skip_nested():
     db.add('Worlds', world)
     assert db.value_in_table('Worlds', world)
     db.value_from_table('Worlds', world.uuid)
+
+def test_update_the_nested_model():
+    db = DataBase()
+    foo = Foo(uuid=str(uuid4()), name="unitest")
+    bar = Bar(uuid=str(uuid4()), foo=foo)
+
+    db.add('Foo', foo)
+    db.add('Bar', bar, foreign_tables={"foo": "Foo"})
+
+    bar.foo.name = "new_value"
+    db.add('Bar', bar, foreign_tables={"foo": "Foo"})
+
+    assert db.value_from_table('Bar', bar.uuid).foo.name == "new_value"
+
+def test_update_the_nested_model_indirect():
+    db = DataBase()
+    foo = Foo(uuid=str(uuid4()), name="unitest")
+    bar = Bar(uuid=str(uuid4()), foo=foo)
+
+    db.add('Foo', foo)
+    db.add('Bar', bar, foreign_tables={"foo": "Foo"})
+
+    foo.name = "new_value"
+    db.add('Foo', foo)
+
+    assert db.value_from_table('Bar', bar.uuid).foo.name == "new_value"

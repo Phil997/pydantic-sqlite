@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 import typing
-from typing import Generator, List
+from typing import Generator, List, Union
 
 from pydantic import BaseModel, root_validator
 from pydantic.fields import ModelField
@@ -54,7 +54,7 @@ class DataBase():
         for row in self._db[tablename].rows:
             yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
 
-    def add(self, tablename: str, value: BaseModel, pk: str = "uuid", foreign_tables={}) -> None:
+    def add(self, tablename: str, value: BaseModel, foreign_tables={}, update_nested_models=True, pk: str = "uuid") -> None:
         """adds a new value to the table tablename"""
 
         # unkown Tablename -> means new Table -> update the table_basemodel_ref list
@@ -67,7 +67,7 @@ class DataBase():
                 f"Can not add type '{type(value)}' to the table '{tablename}', which contains values of type '{self._basemodels[tablename].moduleclass}'")
 
         # create dict for writing to the Table
-        data_for_save = value.__dict__ if not hasattr(value, "sqlite_repr") else value.sqlite_repr
+        data_for_save = value.dict() if not hasattr(value, "sqlite_repr") else value.sqlite_repr
         foreign_keys = []
         for field_name, field in value.__fields__.items():
             field_value = getattr(value, field_name)
@@ -96,9 +96,9 @@ class DataBase():
                 if foreign_table_name not in self._db.table_names():
                     raise KeyError(f"Can not add a value, which has a foreign Key '{foreign_tables}' to a Table '{foreign_table_name}' which does not exists")
 
-                nested_obj_ids = self._upsert_value_in_foreign_table(field_value, foreign_table_name)
+                nested_obj_ids = self._upsert_value_in_foreign_table(field_value, foreign_table_name, update_nested_models)
                 data_for_save[field_name] = nested_obj_ids
-                foreign_keys.append((field_name, foreign_table_name, "uuid"))  # ignore=True
+                foreign_keys.append((field_name, foreign_table_name, pk))  # ignore=True
 
         self._db[tablename].upsert(data_for_save, pk=pk, foreign_keys=foreign_keys)
 
@@ -188,21 +188,23 @@ class DataBase():
 
         return basemodel.moduleclass(**d)
 
-    def _upsert_value_in_foreign_table(self, field_value, foreign_table_name):
-        # the nested BaseModel will be upserted in the foreign table. If the value is Iterable (List) all values
-        # in the List will be upserted
+    def _upsert_value_in_foreign_table(self, field_value, foreign_table_name, update_nested_models) -> Union[str, List[str]]:
+        # The nested BaseModel will be inserted or upserted to the foreign table if it is not contained there,
+        # or the update_nested_models parameter is True. If the value is Iterable (e.g. List) all values in the 
+        # List will be be inserted or upserted. The function returns the ids of the values
 
         # The foreign keys of this table are needed to add the nested basemodel object.
         foreign_refs = {key.column: key.other_table for key in self._db.table(foreign_table_name).foreign_keys}
 
-        def inner(value):
-            self.add(foreign_table_name, value, "uuid", foreign_refs)
+        def add_nested_model(value):
+            if not self.value_in_table(foreign_table_name, value) or update_nested_models:
+                self.add(foreign_table_name, value, foreign_tables=foreign_refs)
             return value.uuid
 
         if not isiterable(field_value):
-            return inner(field_value)
+            return add_nested_model(field_value)
         else:
-            return [inner(element) for element in field_value]
+            return [add_nested_model(element) for element in field_value]
 
     def _typing_conversion(self, field: ModelField, field_value: typing) -> typing.Any:
         if field.type_ == typing.Any:
