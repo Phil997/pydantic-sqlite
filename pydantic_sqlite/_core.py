@@ -11,7 +11,7 @@ from pydantic.fields import ModelField
 from sqlite_utils import Database as _Database
 from typing_inspect import is_literal_type, is_union_type
 
-from ._misc import isiterable, iterable_in_type_repr, remove_file
+from ._misc import iterable_in_type_repr, remove_file
 
 SPECIALTYPE = [
     typing.Any, 
@@ -167,24 +167,23 @@ class DataBase():
         self._db["__basemodels__"].upsert(model.data(), pk="modulename")
 
     def _build_basemodel_from_dict(self, basemodel: TableBaseModel, row: dict, foreign_refs: dict):
-        # returns a subclass object of type BaseModel wich is build out of class basemodel.moduleclass and the data out of the dict
+        # returns a subclass object of type BaseModel which is build out of class basemodel.moduleclass and the data out of the dict
 
-        # Get Informations for the fiels in the basemodel object
         members = inspect.getmembers(basemodel.moduleclass, lambda a: not(inspect.isroutine(a)))
         field_models = next(line[1] for line in members if '__fields__' in line)
 
         d = {}
-        for col_name, value in row.items():
-            type_repr = field_models[col_name].__str__().split(' ')[1]  # 'type=Any'
+        for field_name, field_value in row.items():
+            type_repr = field_models[field_name].__str__().split(' ')[1]  # 'type=Any'
 
-            if col_name in foreign_refs.keys():  # the column contains another subclass of BaseModel
+            if field_name in foreign_refs.keys():  # the column contains another subclass of BaseModel
                 if not iterable_in_type_repr(type_repr):
-                    data = self.value_from_table(foreign_refs[col_name], value)
+                    data = self.value_from_table(foreign_refs[field_name], field_value)
                 else:
-                    data = [self.value_from_table(foreign_refs[col_name], val) for val in json.loads(value)]
+                    data = [self.value_from_table(foreign_refs[field_name], val) for val in json.loads(field_value)]
             else:  
-                data = value if not iterable_in_type_repr(type_repr) else json.loads(value)
-            d.update({col_name: data})
+                data = field_value if not iterable_in_type_repr(type_repr) else json.loads(field_value)
+            d.update({field_name: data})
 
         return basemodel.moduleclass(**d)
 
@@ -201,7 +200,7 @@ class DataBase():
                 self.add(foreign_table_name, value, foreign_tables=foreign_refs)
             return value.uuid
 
-        if not isiterable(field_value):
+        if not isinstance(field_value, List):
             return add_nested_model(field_value)
         else:
             return [add_nested_model(element) for element in field_value]
