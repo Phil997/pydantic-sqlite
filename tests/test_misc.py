@@ -8,10 +8,10 @@ from testfixtures import TempDirectory
 @pytest.fixture()
 def dir():
     with TempDirectory() as dir:
-        yield dir.path + os.path.sep
+        yield dir
 
 def test_uniquify(dir):
-    testfile = dir + "foo.txt"
+    testfile = dir.path + os.path.sep + "foo.txt"
     examples = 10
 
     for _ in range(examples):
