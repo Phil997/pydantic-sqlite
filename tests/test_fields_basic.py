@@ -2,10 +2,13 @@ from random import choice
 from typing import List
 from uuid import uuid4
 
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import BaseModel
 from pydantic_sqlite import DataBase
+
+settings.register_profile("pydantic-sqlite", deadline=500)
+settings.load_profile("pydantic-sqlite")
 
 SQLITE_INTEGERS_MAX = 2**63-1
 SQLITE_INTEGERS_MIN = -2**63

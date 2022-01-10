@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 import typing
 from shutil import copyfile
-from typing import Generator, List, Union
+from typing import Any, Generator, List, Union
 
 from pydantic import BaseModel, root_validator
 from pydantic.fields import ModelField
@@ -56,6 +56,30 @@ class DataBase():
         for row in self._db[tablename].rows:
             yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
 
+    def _special_conversion(self, field_value: Any) -> Union[bool, Any]:
+
+        def special_possible(obj_class):
+            try:
+                if not hasattr(obj_class.SQConfig, 'convert'):
+                    return False
+                return True if obj_class.SQConfig.special_insert else False
+            except AttributeError:
+                return False
+
+        if isinstance(field_value, List):
+            if len(field_value) == 0:
+                return False
+
+            if not special_possible(obj_class := field_value[0].__class__):
+                return False
+            if not all(isinstance(value, type(field_value[0])) for value in field_value):
+                raise ValueError(f"not all values in the List are from the same type: '{field_value}'")
+            return [obj_class.SQConfig.convert(value) for value in field_value]
+        else:
+            if not special_possible(obj_class := field_value.__class__):
+                return False
+            return obj_class.SQConfig.convert(field_value)
+
     def add(self, tablename: str, value: BaseModel, foreign_tables={}, update_nested_models=True, pk: str = "uuid") -> None:
         """adds a new value to the table tablename"""
 
@@ -73,11 +97,9 @@ class DataBase():
         foreign_keys = []
         for field_name, field in value.__fields__.items():
             field_value = getattr(value, field_name)
-            field_class = field_value.__class__
 
-            special_insert = field_class.SQConfig.special_insert if hasattr(field_class, 'SQConfig') else False
-            if special_insert:  # Special Insert with SQConfig.convert
-                data_for_save[field_name] = field_class.SQConfig.convert(field_value)
+            if res := self._special_conversion(field_value):  # Special Insert with SQConfig.convert
+                data_for_save[field_name] = res
 
             elif field.type_ in SPECIALTYPE or typing.get_origin(field.type_):  
                 # typing._SpecialForm: Any, NoReturn, ClassVar, Union, Optional

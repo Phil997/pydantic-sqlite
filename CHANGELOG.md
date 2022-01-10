@@ -1,4 +1,9 @@
 # Change Log
+
+## [0.2.1] - 2022-01-10
+### Fixed
+* If an object that is to be added to a table, which contains as a attribute a list with further BaseModels that have a special insert, an error occurred. This has now been fixed  by @Phil997 in #7
+
  
 ## [0.2.0] - 2022-01-10
 ### Added

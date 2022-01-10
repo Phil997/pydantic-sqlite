@@ -40,6 +40,20 @@ class World(BaseModel):
             return v
         return Hello(name=v[1:])
 
+class Example3(BaseModel):
+    uuid: str
+    data: List[Hello]
+
+    @validator('data', pre=True)
+    def validate(cls, v):
+        if not isinstance(v, list):
+            raise ValueError("value is not a list")
+            
+        def inner():
+            for x in v:
+                yield x if isinstance(x, Hello) else Hello(name=x[1:])
+        return list(inner())
+
 
 def test_nested_BaseModels_Level_0():
     db = DataBase()
@@ -102,6 +116,17 @@ def test_skip_nested():
     db.add('Worlds', world)
     assert db.value_in_table('Worlds', world)
     db.value_from_table('Worlds', world.uuid)
+
+def test_skip_nested_in_List():
+    db = DataBase()
+    foo = Hello(name="foo")
+    bar = Hello(name="bar")
+    ex = Example3(uuid=str(uuid4()), data=[foo, bar])
+
+    db.add('Example', ex)
+    assert db.value_in_table('Example', ex)
+    ex_res = db.value_from_table('Example', ex.uuid)
+    assert ex_res.data == [foo, bar]
 
 def test_update_the_nested_model():
     db = DataBase()
