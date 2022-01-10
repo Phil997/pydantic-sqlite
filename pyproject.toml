@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pydantic_sqlite"
-version = "0.2.0"
+version = "0.2.1"
 description = "Simple package for storing pydantic BaseModels in an in-memory SQLite database."
 authors = ["Your Name <you@example.com>"]
 license = "MIT"
