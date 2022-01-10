@@ -1,0 +1,51 @@
+name: testing
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest_ubuntu:
+    name: 'Test Ubuntu ${{ matrix.python }}'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python:
+          - '3.8'
+          - '3.9'
+          - '3.10'
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup Python
+        uses: actions/setup-python@v2.2.2
+        with:
+          python-version: '${{ matrix.python }}'
+      - name: Python Poetry Action
+        uses: abatilo/actions-poetry@v2.1.4
+      - name: setup environment
+        run: poetry install
+      - name: pytest
+        run: poetry run pytest -s
+  pytest_windows:
+    name: 'Test Windows ${{ matrix.python }}'
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python:
+          - '3.8'
+          - '3.9'
+          - '3.10'
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup Python
+        uses: actions/setup-python@v2.2.2
+        with:
+          python-version: '${{ matrix.python }}'
+      - name: Python Poetry Action
+        uses: abatilo/actions-poetry@v2.1.4
+      - name: setup environment
+        run: poetry install
+      - name: pytest
+        run: poetry run pytest -s
