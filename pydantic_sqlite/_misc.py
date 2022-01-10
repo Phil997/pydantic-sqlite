@@ -1,10 +1,6 @@
 import os
 
 
-def remove_file(name):
-    if os.path.isfile(name):
-        os.remove(name)
-
 def uniquify(path):
     filename, extension = os.path.splitext(path)
     counter = 1

@@ -3,7 +3,9 @@ import inspect
 import json
 import os
 import sqlite3
+import tempfile
 import typing
+from shutil import copyfile
 from typing import Generator, List, Union
 
 from pydantic import BaseModel, root_validator
@@ -11,7 +13,7 @@ from pydantic.fields import ModelField
 from sqlite_utils import Database as _Database
 from typing_inspect import is_literal_type, is_union_type
 
-from ._misc import iterable_in_type_repr, remove_file
+from ._misc import iterable_in_type_repr
 
 SPECIALTYPE = [
     typing.Any, 
@@ -127,7 +129,7 @@ class DataBase():
         """returns the number of values in the Table"""
         return self._db[tablename].count
 
-    def load(self, filename) -> None:
+    def load(self, filename: str) -> None:
         """loads all data from the given file and adds them to the in-memory database"""
         if not os.path.isfile(filename):
             raise FileNotFoundError(f"Can not load {filename}")
@@ -145,21 +147,26 @@ class DataBase():
                 moduleclass=getattr(my_module, classname),
                 pks=json.loads(model['pks']))
 
-    def save(self, filename) -> None:
+    def save(self, filename: str) -> None:
         """saves alle values from the in_memory database to a file"""
         if not filename.endswith(".db"):
             filename += ".db"
+
+        tmp_dir = tempfile.mkdtemp()
+        name = filename.split(os.path.sep)[-1]
+        tmp_name = tmp_dir + os.path.sep + name
+        backup = tmp_dir + os.path.sep + "_backup.db"
+
         if os.path.isfile(filename):
-            os.popen(f"copy {filename} {filename}_backup")
-
-        file_db = sqlite3.connect(f"{filename}_tmp")
-        query = "".join(line for line in self._db.conn.iterdump())
-        file_db.executescript(query)
-        file_db.close()
-
-        os.popen(f"copy {filename}_tmp {filename}").close()
-        remove_file(f"{filename}_tmp")
-        remove_file(f"{filename}_backup")
+            copyfile(filename, backup)
+        try:
+            file_db = sqlite3.connect(tmp_name)
+            query = "".join(line for line in self._db.conn.iterdump())
+            file_db.executescript(query)
+            file_db.close()
+            copyfile(tmp_name, filename)
+        except Exception:
+            print(f"saved the backup file under '{backup}'")
 
     def _basemodels_add_model(self, **kwargs):
         model = TableBaseModel(**kwargs)

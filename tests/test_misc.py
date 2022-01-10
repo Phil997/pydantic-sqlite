@@ -1,7 +1,7 @@
 import os
 
 import pytest
-from pydantic_sqlite._misc import remove_file, uniquify
+from pydantic_sqlite._misc import uniquify
 from testfixtures import TempDirectory
 
 
@@ -9,15 +9,6 @@ from testfixtures import TempDirectory
 def dir():
     with TempDirectory() as dir:
         yield dir
-
-def test_remove_file(dir):
-    testfile = "test.txt"
-    dir.write(testfile, b'some foo thing')
-
-    assert testfile in os.listdir(dir.path)
-    remove_file(f"{dir.path}\\{testfile}")
-    assert testfile not in os.listdir(dir.path)
-
 
 def test_uniquify(dir):
     testfile = f"{dir.path}\\foo.txt"
