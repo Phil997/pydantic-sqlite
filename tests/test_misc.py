@@ -11,7 +11,7 @@ def dir():
         yield dir
 
 def test_uniquify(dir):
-    testfile = f"{dir.path}\\foo.txt"
+    testfile = dir.path + os.path.sep + "foo.txt"
     examples = 10
 
     for _ in range(examples):
