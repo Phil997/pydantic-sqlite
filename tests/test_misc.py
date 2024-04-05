@@ -1,8 +1,9 @@
 import os
 
 import pytest
-from pydantic_sqlite._misc import uniquify
 from testfixtures import TempDirectory
+
+from pydantic_sqlite._misc import uniquify
 
 
 @pytest.fixture()

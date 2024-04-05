@@ -5,6 +5,7 @@ from uuid import uuid4
 from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import BaseModel
+
 from pydantic_sqlite import DataBase
 
 VALID_LITERALS = ['hello', 'hi', 'hey']

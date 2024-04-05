@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 import typing
 from shutil import copyfile
-from typing import Any, Generator, List, Union, Literal, get_origin
+from typing import Any, Generator, List, Literal, Union, get_origin
 
 from pydantic import BaseModel, root_validator
 from pydantic.fields import ModelField

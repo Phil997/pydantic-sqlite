@@ -4,8 +4,9 @@ from uuid import uuid4
 
 import pytest
 from pydantic import BaseModel
-from pydantic_sqlite import DataBase, DB_Handler
 from testfixtures import TempDirectory
+
+from pydantic_sqlite import DataBase, DB_Handler
 
 LENGTH = 10
 TEST_DB_NAME = "test.db"

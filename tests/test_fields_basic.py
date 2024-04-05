@@ -5,6 +5,7 @@ from uuid import uuid4
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import BaseModel
+
 from pydantic_sqlite import DataBase
 
 settings.register_profile("pydantic-sqlite", deadline=500)

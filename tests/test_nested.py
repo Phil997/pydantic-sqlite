@@ -2,6 +2,7 @@ from typing import List
 from uuid import uuid4
 
 from pydantic import BaseModel, validator
+
 from pydantic_sqlite import DataBase
 
 
