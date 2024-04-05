@@ -15,7 +15,6 @@ include = [
 python = "^3.8"
 pydantic = "^1.8.2"
 sqlite-utils = "^3.19"
-typing-inspect = "^0.7.1"
 
 [tool.poetry.dev-dependencies]
 isort = "^5.10.1"
