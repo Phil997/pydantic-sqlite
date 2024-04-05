@@ -10,20 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: install poetry
-        run: |
-          pip install poetry==1.7.1
-          poetry config virtualenvs.in-project true
-      - uses: actions/setup-python@v4
+      - name: Build and publish to pypi
+        uses: JRubics/poetry-publish@v2.0
         with:
-          python-version: '${{ matrix.python }}'
-          chache: poetry
-      - run: poetry install
-
-      - name: build
-        run: poetry build
-      - name: publish
-        env:
-          USERNAME: ${{ secrets.PYPI_USERNAME }}
-          PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-        run: poetry publish --username $USERNAME --password $PASSWORD
+          pypi_token: ${{ secrets.PYPI_TOKEN }}
