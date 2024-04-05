@@ -25,6 +25,7 @@ jobs:
           chache: poetry
       - run: poetry install
 
+      - run: poetry run flake8
       - run: poetry run pytest
 
   pytest_windows:
@@ -47,4 +48,5 @@ jobs:
           chache: poetry
       - run: poetry install
 
+      - run: poetry run flake8
       - run: poetry run pytest
