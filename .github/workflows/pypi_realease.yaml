@@ -9,12 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - name: install poetry
+        run: |
+          pip install poetry==1.7.1
+          poetry config virtualenvs.in-project true
+      - uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-      - uses: abatilo/actions-poetry@v3
-        with:
-          poetry-version: 1.7.1
+          python-version: '${{ matrix.python }}'
+          chache: poetry
+      - run: poetry install
 
       - name: build
         run: poetry build
