@@ -19,8 +19,6 @@ sqlite-utils = "^3.19"
 [tool.poetry.dev-dependencies]
 isort = "^5.10.1"
 flake8 = "^4.0.1"
-ipython = "^7.30.1"
-jupyter = "^1.0.0"
 pytest = "^6.2.5"
 hypothesis = "^6.31.6"
 testfixtures = "^6.18.3"
