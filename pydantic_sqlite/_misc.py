@@ -12,7 +12,7 @@ def uniquify(path):
     return path
 
 def iterable_in_type_repr(type_repr):
-    if 'List' in type_repr: 
+    if 'List' in type_repr:
         return True
     else:
         return False

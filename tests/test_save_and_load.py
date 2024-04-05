@@ -44,7 +44,7 @@ def test_save_with_automatic_add_file_ending(dir, db):
 def test_save_override_existing_db(dir, db):
     db.save(dir + TEST_DB_NAME)
     assert TEST_DB_NAME in os.listdir(dir)
-    
+
     for _ in range(LENGTH):
         foo = Foo(uuid=str(uuid4()), name="unitest")
         db.add('Foo2', foo)
@@ -65,7 +65,7 @@ def test_backup_file_on_existing_file(dir, db):
     with TempDirectory() as d2:
         with mock.patch("pydantic_sqlite._core.tempfile.mkdtemp", lambda : d2.path) as _:
             db.save(dir + TEST_DB_NAME)
-        
+
         assert TEST_DB_NAME in os.listdir(dir)
         assert TEST_DB_NAME in os.listdir(d2.path)
         assert "_backup.db" in os.listdir(d2.path)
@@ -83,7 +83,7 @@ def test_save_and_load(dir, db):
     db.load(dir + TEST_DB_NAME)
     assert len(db._db.table_names()) == 2
     assert len(list(db(TEST_TABLE_NAME))) == LENGTH
-    
+
     for foo in db(TEST_TABLE_NAME):
         assert issubclass(foo.__class__, BaseModel)
         assert isinstance(foo, Foo)
@@ -98,7 +98,7 @@ def test_handler_save_DataBase(dir):
             foo = Foo(uuid=str(uuid4()), name="unitest")
             db.add(TEST_TABLE_NAME, foo)
         db.save(dir + TEST_DB_NAME)
-    
+
     assert TEST_DB_NAME in os.listdir(dir)
 
 def test_handler_load(dir, db):

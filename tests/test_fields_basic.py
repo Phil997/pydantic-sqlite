@@ -12,13 +12,13 @@ settings.load_profile("pydantic-sqlite")
 
 SQLITE_INTEGERS_MAX = 2**63-1
 SQLITE_INTEGERS_MIN = -2**63
-SQLITE_FLOAT_MIN = -1.7976931348623157e+308 
+SQLITE_FLOAT_MIN = -1.7976931348623157e+308
 SQLITE_FLOAT_MAX = 1.7976931348623157e+308
 
 
 class Example(BaseModel):
     uuid: str
-    ex_str: str 
+    ex_str: str
     ex_int: int
     ex_float: float
     ex_bool: bool
@@ -85,7 +85,7 @@ def test_save_and_get_while_iterration_multiple(values):
 @given(st.lists(example_values(), min_size=1))
 def test_save_and_get_from_table_multiple(values):
     db = DataBase()
-    
+
     examples = [Example(**vls) for vls in values]
     for ex in examples:
         db.add("Test", ex)

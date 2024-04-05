@@ -7,11 +7,11 @@ from pydantic_sqlite import DataBase
 
 class Foo(BaseModel):
     uuid: str
-    name: str 
+    name: str
 
 class Bar(BaseModel):
     uuid: str
-    foo: Foo     
+    foo: Foo
 
 class Baz(BaseModel):
     uuid: str
@@ -48,7 +48,7 @@ class Example3(BaseModel):
     def validate(cls, v):
         if not isinstance(v, list):
             raise ValueError("value is not a list")
-            
+
         def inner():
             for x in v:
                 yield x if isinstance(x, Hello) else Hello(name=x[1:])

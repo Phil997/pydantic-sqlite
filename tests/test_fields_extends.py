@@ -7,7 +7,7 @@ from hypothesis import strategies as st
 from pydantic import BaseModel
 from pydantic_sqlite import DataBase
 
-VALID_LITERALS = ['hello', 'hi', 'hey'] 
+VALID_LITERALS = ['hello', 'hi', 'hey']
 
 class Example(BaseModel):
     uuid: str
@@ -80,7 +80,7 @@ def test_save_and_get_while_iterration_multiple(values):
 @given(st.lists(example_values(), min_size=1))
 def test_save_and_get_from_table_multiple(values):
     db = DataBase()
-    
+
     examples = [Example(**vls) for vls in values]
     for ex in examples:
         db.add("Test", ex)
