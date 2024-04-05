@@ -9,6 +9,7 @@ from pydantic_sqlite import DataBase
 
 VALID_LITERALS = ['hello', 'hi', 'hey']
 
+
 class Example(BaseModel):
     uuid: str
     ex_Literal: Literal['hello', 'hi', 'hey']
@@ -16,6 +17,7 @@ class Example(BaseModel):
     ex_any: Any
     ex_optional: Optional[str]
     ex_union: Union[str, int]
+
 
 @st.composite
 def example_values(draw):
@@ -28,6 +30,7 @@ def example_values(draw):
         ex_union=draw(st.sampled_from(elements=[draw(st.text()), draw(st.integers())])),
     )
 
+
 @given(example_values())
 def test_save_and_get_while_iterration(values):
     db = DataBase()
@@ -38,7 +41,8 @@ def test_save_and_get_while_iterration(values):
         assert issubclass(x.__class__, BaseModel)
         assert isinstance(x, Example)
         assert x == test1
-        assert x.ex_optional == None or isinstance(x.ex_optional, str)
+        assert x.ex_optional is None or isinstance(x.ex_optional, str)
+
 
 @given(example_values())
 def test_save_and_get_from_table(values):
@@ -50,7 +54,8 @@ def test_save_and_get_from_table(values):
     assert issubclass(x.__class__, BaseModel)
     assert isinstance(x, Example)
     assert x == test1
-    assert x.ex_optional == None or isinstance(x.ex_optional, str)
+    assert x.ex_optional is None or isinstance(x.ex_optional, str)
+
 
 @given(example_values())
 def test_save_and_check_is_in_table(values):
@@ -60,6 +65,7 @@ def test_save_and_check_is_in_table(values):
 
     assert db.uuid_in_table('Test', test1.uuid)
     assert db.value_in_table('Test', test1)
+
 
 @given(st.lists(example_values(), min_size=1))
 def test_save_and_get_while_iterration_multiple(values):
@@ -76,6 +82,7 @@ def test_save_and_get_while_iterration_multiple(values):
         assert value in examples
         assert value.ex_optional is None or isinstance(value.ex_optional, str)
     assert len(examples) == len(db_values)
+
 
 @given(st.lists(example_values(), min_size=1))
 def test_save_and_get_from_table_multiple(values):

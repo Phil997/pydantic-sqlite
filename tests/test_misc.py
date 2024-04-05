@@ -10,6 +10,7 @@ def dir():
     with TempDirectory() as dir:
         yield dir
 
+
 def test_uniquify(dir):
     testfile = dir.path + os.path.sep + "foo.txt"
     examples = 10
