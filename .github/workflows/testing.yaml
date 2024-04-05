@@ -1,40 +1,18 @@
-name: testing
+name: code_check
 
 on:
   pull_request:
     branches: [main]
 
 jobs:
-  pytest_ubuntu:
-    name: 'Test Ubuntu ${{ matrix.python }}'
-    runs-on: ubuntu-latest
+  code_check:
+    name: 'Test ${{ matrix.os }} ${{ matrix.python }}'
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         python: ['3.8', '3.9', '3.10', '3.11', '3.12']
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: install poetry
-        run: |
-          pip install poetry==1.7.1
-          poetry config virtualenvs.in-project true
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '${{ matrix.python }}'
-          chache: poetry
-      - run: poetry install
-
-      - run: poetry run flake8
-      - run: poetry run pytest
-
-  pytest_windows:
-    name: 'Test Windows ${{ matrix.python }}'
-    runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
