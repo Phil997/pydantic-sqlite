@@ -6,12 +6,11 @@ import sqlite3
 import tempfile
 import typing
 from shutil import copyfile
-from typing import Any, Generator, List, Union
+from typing import Any, Generator, List, Union, Literal, get_origin
 
 from pydantic import BaseModel, root_validator
 from pydantic.fields import ModelField
 from sqlite_utils import Database as _Database
-from typing_inspect import is_literal_type, is_union_type
 
 from ._misc import iterable_in_type_repr
 
@@ -237,9 +236,9 @@ class DataBase():
     def _typing_conversion(self, field: ModelField, field_value: typing) -> typing.Any:
         if field.type_ == typing.Any:
             return field_value
-        elif is_union_type(field.type_):
+        elif get_origin(field.type_) is Union:
             return str(field_value)
-        elif is_literal_type(field.type_):
+        elif get_origin(field.type_) is Literal:
             return str(field_value)
         else:
             raise NotImplementedError(f"type {field.type_} is not supported yet")
