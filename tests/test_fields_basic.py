@@ -5,6 +5,7 @@ from uuid import uuid4
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import BaseModel
+
 from pydantic_sqlite import DataBase
 
 settings.register_profile("pydantic-sqlite", deadline=500)
@@ -12,17 +13,18 @@ settings.load_profile("pydantic-sqlite")
 
 SQLITE_INTEGERS_MAX = 2**63-1
 SQLITE_INTEGERS_MIN = -2**63
-SQLITE_FLOAT_MIN = -1.7976931348623157e+308 
+SQLITE_FLOAT_MIN = -1.7976931348623157e+308
 SQLITE_FLOAT_MAX = 1.7976931348623157e+308
 
 
 class Example(BaseModel):
     uuid: str
-    ex_str: str 
+    ex_str: str
     ex_int: int
     ex_float: float
     ex_bool: bool
     ex_list: List[str]
+
 
 @st.composite
 def example_values(draw):
@@ -47,6 +49,7 @@ def test_save_and_get_while_iterration(values):
         assert isinstance(x, Example)
         assert x == test1
 
+
 @given(example_values())
 def test_save_and_get_from_table(values):
     db = DataBase()
@@ -58,6 +61,7 @@ def test_save_and_get_from_table(values):
     assert isinstance(x, Example)
     assert x == test1
 
+
 @given(example_values())
 def test_save_and_check_is_in_table(values):
     db = DataBase()
@@ -66,6 +70,7 @@ def test_save_and_check_is_in_table(values):
 
     assert db.uuid_in_table('Test', test1.uuid)
     assert db.value_in_table('Test', test1)
+
 
 @given(st.lists(example_values(), min_size=1))
 def test_save_and_get_while_iterration_multiple(values):
@@ -82,10 +87,11 @@ def test_save_and_get_while_iterration_multiple(values):
         assert value in examples
     assert len(examples) == len(db_values)
 
+
 @given(st.lists(example_values(), min_size=1))
 def test_save_and_get_from_table_multiple(values):
     db = DataBase()
-    
+
     examples = [Example(**vls) for vls in values]
     for ex in examples:
         db.add("Test", ex)

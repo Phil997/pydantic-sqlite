@@ -2,24 +2,29 @@ from typing import List
 from uuid import uuid4
 
 from pydantic import BaseModel, validator
+
 from pydantic_sqlite import DataBase
 
 
 class Foo(BaseModel):
     uuid: str
-    name: str 
+    name: str
+
 
 class Bar(BaseModel):
     uuid: str
-    foo: Foo     
+    foo: Foo
+
 
 class Baz(BaseModel):
     uuid: str
     bar: Bar
 
+
 class FooList(BaseModel):
     uuid: str
     testcase: List[Foo]
+
 
 class Hello(BaseModel):
     name: str
@@ -29,6 +34,7 @@ class Hello(BaseModel):
 
         def convert(obj):
             return f"_{obj.name}"
+
 
 class World(BaseModel):
     uuid: str
@@ -40,6 +46,7 @@ class World(BaseModel):
             return v
         return Hello(name=v[1:])
 
+
 class Example3(BaseModel):
     uuid: str
     data: List[Hello]
@@ -48,7 +55,7 @@ class Example3(BaseModel):
     def validate(cls, v):
         if not isinstance(v, list):
             raise ValueError("value is not a list")
-            
+
         def inner():
             for x in v:
                 yield x if isinstance(x, Hello) else Hello(name=x[1:])
@@ -62,6 +69,7 @@ def test_nested_BaseModels_Level_0():
     db.add('Foo', foo)
     assert db.value_in_table('Foo', foo)
 
+
 def test_nested_BaseModels_Level_1():
     db = DataBase()
     foo = Foo(uuid=str(uuid4()), name="unitest")
@@ -73,6 +81,7 @@ def test_nested_BaseModels_Level_1():
     db.add('Bar', bar, foreign_tables={"foo": "Foo"})
     assert db.value_in_table('Bar', bar)
     assert isinstance(bar.foo, Foo)
+
 
 def test_nested_BaseModels_Level_2():
     db = DataBase()
@@ -94,6 +103,7 @@ def test_nested_BaseModels_Level_2():
     assert isinstance(baz.bar.foo, Foo)
     assert baz.bar.foo.name == "unitest"
 
+
 def test_nested_BaseModels_in_Typing_List():
     db = DataBase()
 
@@ -108,6 +118,7 @@ def test_nested_BaseModels_in_Typing_List():
     assert db.value_in_table('FooList', ex)
     assert [foo1, foo2] == db.value_from_table('FooList', ex.uuid).testcase
 
+
 def test_skip_nested():
     db = DataBase()
     hello = Hello(name="unitest")
@@ -116,6 +127,7 @@ def test_skip_nested():
     db.add('Worlds', world)
     assert db.value_in_table('Worlds', world)
     db.value_from_table('Worlds', world.uuid)
+
 
 def test_skip_nested_in_List():
     db = DataBase()
@@ -127,6 +139,7 @@ def test_skip_nested_in_List():
     assert db.value_in_table('Example', ex)
     ex_res = db.value_from_table('Example', ex.uuid)
     assert ex_res.data == [foo, bar]
+
 
 def test_update_the_nested_model():
     db = DataBase()
@@ -140,6 +153,7 @@ def test_update_the_nested_model():
     db.add('Bar', bar, foreign_tables={"foo": "Foo"})
 
     assert db.value_from_table('Bar', bar.uuid).foo.name == "new_value"
+
 
 def test_update_the_nested_model_indirect():
     db = DataBase()

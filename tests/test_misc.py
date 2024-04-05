@@ -1,14 +1,16 @@
 import os
 
 import pytest
-from pydantic_sqlite._misc import uniquify
 from testfixtures import TempDirectory
+
+from pydantic_sqlite._misc import uniquify
 
 
 @pytest.fixture()
 def dir():
     with TempDirectory() as dir:
         yield dir
+
 
 def test_uniquify(dir):
     testfile = dir.path + os.path.sep + "foo.txt"
