@@ -12,6 +12,8 @@ from pydantic._internal._model_construction import ModelMetaclass
 from pydantic.fields import FieldInfo
 from sqlite_utils import Database as _Database
 
+from ._misc import convert_value_into_union_types
+
 SPECIALTYPE = [
     typing.Any,
     typing.Literal,
@@ -157,6 +159,7 @@ class DataBase():
 
         model = self._basemodels[tablename]
         foreign_refs = {key.column: key.other_table for key in self._db[tablename].foreign_keys}
+        print("foreign_refs", foreign_refs)
         return None if not hits else self._build_basemodel_from_dict(model, hits[0], foreign_refs=foreign_refs)
 
     def values_in_table(self, tablename) -> int:
@@ -214,21 +217,25 @@ class DataBase():
         tablemodel.basemodel_cls
         d = {}
 
-        def represents_list(fieldinfo: FieldInfo) -> bool:
-            return get_origin(fieldinfo.annotation) == list
-
         for field_name, field_value in row.items():
             info = field_models[field_name]
 
             if field_name in foreign_refs.keys():  # the column contains another subclass of BaseModel
-                if not represents_list(info):
-                    data = self.value_from_table(foreign_refs[field_name], field_value)
-                else:
+                print("moin", json.loads(field_value))
+                if get_origin(info.annotation) == list:
                     data = [self.value_from_table(foreign_refs[field_name], val) for val in json.loads(field_value)]
+                else:
+                    data = self.value_from_table(foreign_refs[field_name], field_value)
             else:
-                data = field_value if not represents_list(info) else json.loads(field_value)
-            d.update({field_name: data})
+                if get_origin(info.annotation) == list:
+                    data = json.loads(field_value)
+                elif get_origin(info.annotation) == Union:
+                    data = convert_value_into_union_types(info.annotation, field_value)
+                else:
+                    data = field_value
 
+            d.update({field_name: data})
+        print(d)
         return tablemodel.basemodel_cls(**d)
 
     def _upsert_value_in_foreign_table(
@@ -259,7 +266,7 @@ class DataBase():
         elif get_origin(field.annotation) is list:
             return [str(x) for x in field_value]
         elif get_origin(field.annotation) is Union:
-            return str(field_value)
+            return field_value
         elif get_origin(field.annotation) is Literal:
             return str(field_value)
         else:
