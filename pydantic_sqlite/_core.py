@@ -106,24 +106,11 @@ class DataBase():
                 # typing.get_origin(field.annotation) -> e.g. Literal
                 data_for_save[field_name] = self._typing_conversion(field, field_value)
 
-            elif issubclass(field.annotation, BaseModel):  # nested BaseModels in this value
+            elif issubclass(field.annotation, BaseModel):
                 # the value has got a field which is of type BaseModel, so this filed must be in a foreign table
                 # if the field is already in the Table it continues, but if is it not in the table it will add this
                 # to the table recursive call to self.add
-
-                if field_name not in foreign_tables.keys():
-                    keys = list(foreign_tables.keys())
-                    msg = f"detect field of Type BaseModel, but can not find '{field_name}'"
-                    msg += f"in foreign_tables (Keys: {keys})"
-                    raise KeyError(msg) from None
-                else:
-                    foreign_table_name = foreign_tables[field_name]
-
-                if foreign_table_name not in self._db.table_names():
-                    msg = f"Can not add a value, which has a foreign Key '{foreign_tables}'"
-                    msg += f" to a Table '{foreign_table_name}' which does not exists"
-                    raise KeyError(msg)
-
+                foreign_table_name = self.get_check_foreign_table_name(foreign_tables)
                 nested_obj_ids = self._upsert_value_in_foreign_table(
                     field_value,
                     foreign_table_name,
@@ -132,6 +119,21 @@ class DataBase():
                 foreign_keys.append((field_name, foreign_table_name, pk))  # ignore=True
 
         self._db[tablename].upsert(data_for_save, pk=pk, foreign_keys=foreign_keys)
+
+    def get_check_foreign_table_name(self, field_name: str,  foreign_tables: dict):
+        if field_name not in foreign_tables.keys():
+            keys = list(foreign_tables.keys())
+            msg = f"detect field of Type BaseModel, but can not find '{field_name}'"
+            msg += f"in foreign_tables (Keys: {keys})"
+            raise KeyError(msg) from None
+        else:
+            foreign_table_name = foreign_tables[field_name]
+
+        if foreign_table_name not in self._db.table_names():
+            msg = f"Can not add a value, which has a foreign Key '{foreign_tables}'"
+            msg += f" to a Table '{foreign_table_name}' which does not exists"
+            raise KeyError(msg)
+        return foreign_table_name
 
     def uuid_in_table(self, tablename: str, uuid: str) -> bool:
         """checks if the given uuid is used as a primary key in the table"""
