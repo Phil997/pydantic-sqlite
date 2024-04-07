@@ -13,7 +13,7 @@ include = [
 
 [tool.poetry.dependencies]
 python = "^3.8.1"
-pydantic = "^1.8.2"
+pydantic = "2.1.0"
 sqlite-utils = "^3.19"
 
 [tool.poetry.group.dev.dependencies]
