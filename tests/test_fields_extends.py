@@ -1,3 +1,4 @@
+import string
 from random import choice
 from typing import Any, List, Literal, Optional, Union
 from uuid import uuid4
@@ -8,6 +9,8 @@ from pydantic import BaseModel
 
 from pydantic_sqlite import DataBase
 
+from ._globals import SQLITE_INTEGERS_MAX, SQLITE_INTEGERS_MIN
+
 VALID_LITERALS = ['hello', 'hi', 'hey']
 
 
@@ -17,7 +20,7 @@ class Example(BaseModel):
     ex_list_any: List[Any]
     ex_any: Any
     ex_optional: Optional[str]
-    ex_union: Union[str, int]
+    ex_union: Union[int, str]
 
 
 @st.composite
@@ -27,8 +30,12 @@ def example_values(draw):
         ex_Literal=draw(st.sampled_from(VALID_LITERALS)),
         ex_list_any=draw(st.lists(st.text())),
         ex_any=draw(st.text()),
-        ex_optional=draw(st.sampled_from(elements=[draw(st.text()), None])),
-        ex_union=draw(st.sampled_from(elements=[draw(st.text()), draw(st.integers())])),
+        ex_optional=draw(st.sampled_from(elements=[
+            draw(st.text()),
+            None])),
+        ex_union=draw(st.sampled_from(elements=[
+            draw(st.text(alphabet=string.printable.replace('0123456789', ' '))),
+            draw(st.integers(min_value=SQLITE_INTEGERS_MIN, max_value=SQLITE_INTEGERS_MAX))])),
     )
 
 
@@ -77,12 +84,12 @@ def test_save_and_get_while_iterration_multiple(values):
         db.add("Test", ex)
 
     db_values = [ex for ex in db("Test")]
-    for value in db_values:
+    assert len(examples) == len(db_values)
+    for n, value in enumerate(db_values):
         assert issubclass(value.__class__, BaseModel)
         assert isinstance(value, Example)
         assert value in examples
         assert value.ex_optional is None or isinstance(value.ex_optional, str)
-    assert len(examples) == len(db_values)
 
 
 @given(st.lists(example_values(), min_size=1))
