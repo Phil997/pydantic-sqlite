@@ -25,7 +25,7 @@ class TableBaseModel:
     def __init__(self, table: str, basemodel_cls: ModelMetaclass, pks: List[str]) -> None:
         self.table = table
         self.basemodel_cls = basemodel_cls
-        self.modulename = basemodel_cls.__class__.__name__
+        self.modulename = str(basemodel_cls).split("<class '")[1].split("'>")[0]
         self.pks = pks
 
     def data(self):
@@ -96,6 +96,7 @@ class DataBase():
 
         # create dict for writing to the Table
         data_for_save = value.model_dump() if not hasattr(value, "sqlite_repr") else value.sqlite_repr
+
         foreign_keys = []
         for field_name, field in value.model_fields.items():
             field_value = getattr(value, field_name)
@@ -159,7 +160,6 @@ class DataBase():
 
         model = self._basemodels[tablename]
         foreign_refs = {key.column: key.other_table for key in self._db[tablename].foreign_keys}
-        print("foreign_refs", foreign_refs)
         return None if not hits else self._build_basemodel_from_dict(model, hits[0], foreign_refs=foreign_refs)
 
     def values_in_table(self, tablename) -> int:
@@ -221,7 +221,6 @@ class DataBase():
             info = field_models[field_name]
 
             if field_name in foreign_refs.keys():  # the column contains another subclass of BaseModel
-                print("moin", json.loads(field_value))
                 if get_origin(info.annotation) == list:
                     data = [self.value_from_table(foreign_refs[field_name], val) for val in json.loads(field_value)]
                 else:
@@ -235,7 +234,6 @@ class DataBase():
                     data = field_value
 
             d.update({field_name: data})
-        print(d)
         return tablemodel.basemodel_cls(**d)
 
     def _upsert_value_in_foreign_table(
