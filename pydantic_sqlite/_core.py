@@ -113,7 +113,7 @@ class DataBase():
                 # the value has got a field which is of type BaseModel, so this filed must be in a foreign table
                 # if the field is already in the Table it continues, but if is it not in the table it will add this
                 # to the table recursive call to self.add
-                foreign_table_name = self.get_check_foreign_table_name(foreign_tables)
+                foreign_table_name = self.get_check_foreign_table_name(field_name, foreign_tables)
                 nested_obj_ids = self._upsert_value_in_foreign_table(
                     field_value,
                     foreign_table_name,
