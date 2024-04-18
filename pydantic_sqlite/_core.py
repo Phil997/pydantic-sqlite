@@ -1,5 +1,4 @@
 import importlib
-import inspect
 import json
 import os
 import sqlite3
@@ -8,11 +7,12 @@ import typing
 from shutil import copyfile
 from typing import Any, Generator, List, Literal, Union, get_origin
 
-from pydantic import BaseModel, root_validator
-from pydantic.fields import ModelField
+from pydantic import BaseModel
+from pydantic._internal._model_construction import ModelMetaclass
+from pydantic.fields import FieldInfo
 from sqlite_utils import Database as _Database
 
-from ._misc import iterable_in_type_repr
+from ._misc import convert_value_into_union_types
 
 SPECIALTYPE = [
     typing.Any,
@@ -20,18 +20,13 @@ SPECIALTYPE = [
     typing.Union]
 
 
-class TableBaseModel(BaseModel):
-    table: str
-    moduleclass: typing.Any
-    modulename: str
-    pks: List[str]
+class TableBaseModel:
 
-    @root_validator(pre=True)
-    def extract_modulename(cls, values):
-        v = values['moduleclass']
-        values.update(
-            {'modulename': str(v).split("<class '")[1].split("'>")[0]})
-        return values
+    def __init__(self, table: str, basemodel_cls: ModelMetaclass, pks: List[str]) -> None:
+        self.table = table
+        self.basemodel_cls = basemodel_cls
+        self.modulename = str(basemodel_cls).split("<class '")[1].split("'>")[0]
+        self.pks = pks
 
     def data(self):
         return dict(
@@ -91,46 +86,34 @@ class DataBase():
 
         # unkown Tablename -> means new Table -> update the table_basemodel_ref list
         if tablename not in self._basemodels:
-            self._basemodels_add_model(table=tablename, moduleclass=value.__class__, pks=[pk])
+            self._basemodels_add_model(table=tablename, basemodel_cls=type(value), pks=[pk])
 
         # check whether the value matches the basemodels in the table
-        if not self._basemodels[tablename].moduleclass == type(value):
+        if not isinstance(value, BaseModel):
             msg = f"Can not add type '{type(value)}' to the table '{tablename}',"
-            msg += f" which contains values of type '{self._basemodels[tablename].moduleclass}'"
+            msg += f" which contains values of type '{self._basemodels[tablename].basemodel_cls}'"
             raise ValueError(msg)
 
         # create dict for writing to the Table
-        data_for_save = value.dict() if not hasattr(value, "sqlite_repr") else value.sqlite_repr
+        data_for_save = value.model_dump() if not hasattr(value, "sqlite_repr") else value.sqlite_repr
+
         foreign_keys = []
-        for field_name, field in value.__fields__.items():
+        for field_name, field in value.model_fields.items():
             field_value = getattr(value, field_name)
 
             if res := self._special_conversion(field_value):  # Special Insert with SQConfig.convert
                 data_for_save[field_name] = res
 
-            elif field.type_ in SPECIALTYPE or typing.get_origin(field.type_):
+            elif field.annotation in SPECIALTYPE or typing.get_origin(field.annotation):
                 # typing._SpecialForm: Any, NoReturn, ClassVar, Union, Optional
-                # typing.get_origin(field.type_) -> e.g. Literal
+                # typing.get_origin(field.annotation) -> e.g. Literal
                 data_for_save[field_name] = self._typing_conversion(field, field_value)
 
-            elif issubclass(field.type_, BaseModel):  # nested BaseModels in this value
+            elif issubclass(field.annotation, BaseModel):
                 # the value has got a field which is of type BaseModel, so this filed must be in a foreign table
                 # if the field is already in the Table it continues, but if is it not in the table it will add this
                 # to the table recursive call to self.add
-
-                if field_name not in foreign_tables.keys():
-                    keys = list(foreign_tables.keys())
-                    msg = f"detect field of Type BaseModel, but can not find '{field_name}'"
-                    msg += f"in foreign_tables (Keys: {keys})"
-                    raise KeyError(msg) from None
-                else:
-                    foreign_table_name = foreign_tables[field_name]
-
-                if foreign_table_name not in self._db.table_names():
-                    msg = f"Can not add a value, which has a foreign Key '{foreign_tables}'"
-                    msg += f" to a Table '{foreign_table_name}' which does not exists"
-                    raise KeyError(msg)
-
+                foreign_table_name = self.get_check_foreign_table_name(field_name, foreign_tables)
                 nested_obj_ids = self._upsert_value_in_foreign_table(
                     field_value,
                     foreign_table_name,
@@ -139,6 +122,21 @@ class DataBase():
                 foreign_keys.append((field_name, foreign_table_name, pk))  # ignore=True
 
         self._db[tablename].upsert(data_for_save, pk=pk, foreign_keys=foreign_keys)
+
+    def get_check_foreign_table_name(self, field_name: str,  foreign_tables: dict):
+        if field_name not in foreign_tables.keys():
+            keys = list(foreign_tables.keys())
+            msg = f"detect field of Type BaseModel, but can not find '{field_name}'"
+            msg += f"in foreign_tables (Keys: {keys})"
+            raise KeyError(msg) from None
+        else:
+            foreign_table_name = foreign_tables[field_name]
+
+        if foreign_table_name not in self._db.table_names():
+            msg = f"Can not add a value, which has a foreign Key '{foreign_tables}'"
+            msg += f" to a Table '{foreign_table_name}' which does not exists"
+            raise KeyError(msg)
+        return foreign_table_name
 
     def uuid_in_table(self, tablename: str, uuid: str) -> bool:
         """checks if the given uuid is used as a primary key in the table"""
@@ -183,7 +181,7 @@ class DataBase():
             my_module = importlib.import_module(modulename)
             self._basemodels_add_model(
                 table=model['table'],
-                moduleclass=getattr(my_module, classname),
+                basemodel_cls=getattr(my_module, classname),
                 pks=json.loads(model['pks']))
 
     def save(self, filename: str) -> None:
@@ -212,27 +210,31 @@ class DataBase():
         self._basemodels.update({kwargs['table']: model})
         self._db["__basemodels__"].upsert(model.data(), pk="modulename")
 
-    def _build_basemodel_from_dict(self, basemodel: TableBaseModel, row: dict, foreign_refs: dict):
+    def _build_basemodel_from_dict(self, tablemodel: TableBaseModel, row: dict, foreign_refs: dict):
         # returns a subclass object of type BaseModel which is build out of
-        # class basemodel.moduleclass and the data out of the dict
-
-        members = inspect.getmembers(basemodel.moduleclass, lambda a: not inspect.isroutine(a))
-        field_models = next(line[1] for line in members if '__fields__' in line)
-
+        # class basemodel.basemodel_cls and the data out of the dict
+        field_models: dict[str, FieldInfo] = tablemodel.basemodel_cls.model_fields
+        tablemodel.basemodel_cls
         d = {}
+
         for field_name, field_value in row.items():
-            type_repr = field_models[field_name].__str__().split(' ')[1]  # 'type=Any'
+            info = field_models[field_name]
 
             if field_name in foreign_refs.keys():  # the column contains another subclass of BaseModel
-                if not iterable_in_type_repr(type_repr):
-                    data = self.value_from_table(foreign_refs[field_name], field_value)
-                else:
+                if get_origin(info.annotation) == list:
                     data = [self.value_from_table(foreign_refs[field_name], val) for val in json.loads(field_value)]
+                else:
+                    data = self.value_from_table(foreign_refs[field_name], field_value)
             else:
-                data = field_value if not iterable_in_type_repr(type_repr) else json.loads(field_value)
-            d.update({field_name: data})
+                if get_origin(info.annotation) == list:
+                    data = json.loads(field_value)
+                elif get_origin(info.annotation) == Union:
+                    data = convert_value_into_union_types(info.annotation, field_value)
+                else:
+                    data = field_value
 
-        return basemodel.moduleclass(**d)
+            d.update({field_name: data})
+        return tablemodel.basemodel_cls(**d)
 
     def _upsert_value_in_foreign_table(
             self,
@@ -256,12 +258,14 @@ class DataBase():
         else:
             return [add_nested_model(element) for element in field_value]
 
-    def _typing_conversion(self, field: ModelField, field_value: typing) -> typing.Any:
-        if field.type_ == typing.Any:
+    def _typing_conversion(self, field: FieldInfo, field_value) -> typing.Any:
+        if field.annotation == typing.Any:
             return field_value
-        elif get_origin(field.type_) is Union:
-            return str(field_value)
-        elif get_origin(field.type_) is Literal:
+        elif get_origin(field.annotation) is list:
+            return [str(x) for x in field_value]
+        elif get_origin(field.annotation) is Union:
+            return field_value
+        elif get_origin(field.annotation) is Literal:
             return str(field_value)
         else:
-            raise NotImplementedError(f"type {field.type_} is not supported yet")
+            raise NotImplementedError(f"type {field.annotation} is not supported yet")

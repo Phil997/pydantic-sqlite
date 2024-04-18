@@ -1,4 +1,5 @@
 import os
+from typing import Any, get_args
 
 
 def uniquify(path):
@@ -12,8 +13,12 @@ def uniquify(path):
     return path
 
 
-def iterable_in_type_repr(type_repr):
-    if 'List' in type_repr:
-        return True
-    else:
-        return False
+def convert_value_into_union_types(union_type, value: Any) -> Any:
+    if type(None) in get_args(union_type) and value is None:
+        return None
+    for t in get_args(union_type):
+        try:
+            return t(value)
+        except Exception:
+            ...
+    return value

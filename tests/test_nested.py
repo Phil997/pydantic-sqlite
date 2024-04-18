@@ -1,7 +1,7 @@
 from typing import List
 from uuid import uuid4
 
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 
 from pydantic_sqlite import DataBase
 
@@ -40,7 +40,7 @@ class World(BaseModel):
     uuid: str
     hello: Hello
 
-    @validator('hello', pre=True)
+    @field_validator('hello', mode="before")
     def validate(cls, v):
         if isinstance(v, Hello):
             return v
@@ -51,7 +51,7 @@ class Example3(BaseModel):
     uuid: str
     data: List[Hello]
 
-    @validator('data', pre=True)
+    @field_validator('data', mode="before")
     def validate(cls, v):
         if not isinstance(v, list):
             raise ValueError("value is not a list")
