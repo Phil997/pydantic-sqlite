@@ -13,6 +13,10 @@ TEST_DB_NAME = "test.db"
 TEST_TABLE_NAME = "test.db"
 
 
+class DummyExeption(Exception):
+    ...
+
+
 class Foo(BaseModel):
     uuid: str
     name: str
@@ -123,21 +127,21 @@ def test_handler_load(dir, db):
 
 def test_handler_save_ExceptionDB_on_exception(dir, db):
     db.save(dir + TEST_DB_NAME)
-    with pytest.raises(ZeroDivisionError):
+    with pytest.raises(ValueError):
         with DB_Handler(dir + TEST_DB_NAME) as _:
-            1/0
+            raise ValueError()
     assert f"{TEST_DB_NAME[:-3]}_crash.db" in os.listdir(dir)
 
 
 def test_handler_save_multiple_ExceptionDB_on_exception(dir, db):
     db.save(dir + TEST_DB_NAME)
 
-    with pytest.raises(ZeroDivisionError):
+    with pytest.raises(KeyError):
         with DB_Handler(dir + TEST_DB_NAME) as _:
-            1/0
+            raise KeyError()
     assert f"{TEST_DB_NAME[:-3]}_crash.db" in os.listdir(dir)
 
-    with pytest.raises(ZeroDivisionError):
+    with pytest.raises(DummyExeption):
         with DB_Handler(dir + TEST_DB_NAME) as _:
-            1/0
+            raise DummyExeption()
     assert f"{TEST_DB_NAME[:-3]}_crash(1).db" in os.listdir(dir)
