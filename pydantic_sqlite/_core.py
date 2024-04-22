@@ -1,6 +1,7 @@
 import importlib
 import inspect
 import json
+import logging
 import os
 import sqlite3
 import tempfile
@@ -190,7 +191,8 @@ class DataBase():
             file_db.close()
             copyfile(tmp_name, filename)
         except Exception:
-            print(f"saved the backup file under '{backup}'")
+            logging.warning(f"saved the backup file under '{backup}'")
+            raise
 
     def _basemodels_add_model(self, **kwargs):
         model = TableBaseModel(**kwargs)
