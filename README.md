@@ -137,7 +137,7 @@ The DB_handler serves as a wrapper for the DataBase. The database returned by th
 
 However, the handler offers an added benefit: in case of an exception, it automatically saves a database snapshot with the latest values as '<<dbname_crash>>.db'. If such a file already exists, the filename is iteratively incremented.
 
-For instance, running this example generates two files: 'hello.db' and 'hello_crash.db'. Executing the script again, a snapchot file called 'hello_crash_(1).db' will be created
+For instance, running this example generates two files: 'hello.db' and 'hello_crash.db'. Executing the script again, a snapchot file called 'hello_crash(1).db' will be created
 
 
 ```python

@@ -140,4 +140,4 @@ def test_handler_save_multiple_ExceptionDB_on_exception(dir, db):
     with pytest.raises(ZeroDivisionError):
         with DB_Handler(dir + TEST_DB_NAME) as _:
             1/0
-    assert f"{TEST_DB_NAME[:-3]}_crash_(1).db" in os.listdir(dir)
+    assert f"{TEST_DB_NAME[:-3]}_crash(1).db" in os.listdir(dir)
