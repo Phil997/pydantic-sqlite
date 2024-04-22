@@ -1,25 +1,26 @@
 # pydantic_sqlite
-Simple package for storing pydantic BaseModels in an in-memory SQLite database.
+A lightweight package designed for stroing pydantic BaseModels in an in-memory SQLite database.
 
 ## Installation
 
     pip install pydantic-sqlite
 
 ## Basic Example
-Create two objects of the type TestCase and add them to the database in the table 'Test'. Later, all values in the table are printed while iteration over the Table 'Test'.
+Creating two instances of the class Person and store them in the 'Test' table of the database. Then, retrieve and display all records from the 'Test' table through iteration."
+
 
 ``` python
 from pydantic_sqlite import DataBase
 from pydantic import BaseModel
 from uuid import uuid4
 
-class TestCase(BaseModel):
+class Person(BaseModel):
     uuid: str
     name: str 
     age: int
         
-test1 = TestCase(uuid=str(uuid4()), name="Bob", age=12)
-test2 = TestCase(uuid=str(uuid4()), name="Alice", age=28)
+test1 = Person(uuid=str(uuid4()), name="Bob", age=12)
+test2 = Person(uuid=str(uuid4()), name="Alice", age=28)
 
 db = DataBase()
 db.add("Test", test1)
@@ -27,7 +28,7 @@ db.add("Test", test2)
 
 for x in db("Test"):
     assert issubclass(x.__class__, BaseModel)
-    assert isinstance(x, TestCase)
+    assert isinstance(x, Person)
     print(x)
 
 #>>> uuid='10d002bc-9941-4943-a46b-82b8214bf618' name='Bob' age=12
@@ -36,9 +37,8 @@ for x in db("Test"):
 ```
 
 ## Nested Example
-Create one object of the type address and two objects of the type person. Each person has an attribute of the type address. 
-When adding the person to the database, the database needs the foreign_table 'Adresses' to create the foreign key. This means that when iterating over the table 'Persons', a complete object "Person" can be created again, which has an attribute of the type 'Address'.
 
+Instantiate an address object and two person objects, with each person having an attribute of the address type. Upon adding the person to the database, the database requires the foreign table 'Addresses' to establish the foreign key relationship. Consequently, when iterating over the 'Persons' table, it enables the reconstruction of complete 'Person' objects, each possessing an attribute of the 'Address' type.
 
 ```python
 from pydantic_sqlite import DataBase
@@ -82,19 +82,21 @@ for y in db("Persons"):
 ```
 
 # Nested Example without foreign Table
-If you do not want to have an additional table, you can save an object of the BaseModel type differently.
+If you prefer to avoid an extra table, you have the option to store an object of the BaseModel type differently.
 
-In this example, the address object is not saved as an additional table. It is stored as a string in a column of the table 'Persons'. To realise this, the class `SQConfig` is added to the Address class. This class must contain the method `convert`, which determines how the object is to be stored in SQLite. During the subsequent loading, an object of the type Address is created again from the string with the function pydantic.validator.
+In this scenario, the address object isn't stored in a separate table but rather as a string within a column of the 'Persons' table. To achieve this, the Address class includes the SQConfig class, which must define the convert method, specifying how the object should be stored in SQLite. Upon retrieval, an Address object is reconstructed from the stored string using a field_validator.
+
 
 ```python
-from pydantic_sqlite import DataBase
-from pydantic import BaseModel, validator
 from uuid import uuid4
+from pydantic import BaseModel, field_validator
+from pydantic_sqlite import DataBase
+
 
 class Address(BaseModel):
     town: str
     street: str
-        
+
     class SQConfig:
         special_insert: bool = True
 
@@ -105,8 +107,8 @@ class Person(BaseModel):
     uuid: str
     name: str 
     address: Address
-        
-    @validator('address', pre=True)
+
+    @field_validator('address', mode="before")
     def validate(cls, v):
         if isinstance(v, Address):
             return v
@@ -131,39 +133,31 @@ for y in db("Persons"):
 ```
 
 # DB_Handler
-The DB_handler provides a wrapper for the DataBase. The database returned by the context manager can be used in the same way as in the previous examples. 
+The DB_handler serves as a wrapper for the DataBase. The database returned by the context manager functions identically to those in previous examples.
 
-However, the handler has the advantage that if an exception occurs, e.g. a 'ZeroDevisionError', a database with the last values is saved as '<<dbname_crash>>.db'. If this file already exists, the file name is incremented.
+However, the handler offers an added benefit: in case of an exception, it automatically saves a database snapshot with the latest values as '<<dbname_crash>>.db'. If such a file already exists, the filename is iteratively incremented.
 
-This example creates two files hello.db and hello_crash.db If you run this script twice, three files are created: hello.db, hello_crash.db and hello_crash_(1).db
+For instance, running this example generates two files: 'hello.db' and 'hello_crash.db'. Executing the script again, a snapchot file called 'hello_crash_(1).db' will be created
+
+
 ```python
-from pydantic_sqlite import DataBase, DB_Handler
-from pydantic import BaseModel, validator
 from uuid import uuid4
+from pydantic import BaseModel
+from pydantic_sqlite import DB_Handler
 
-class TestCase(BaseModel):
+class Person(BaseModel):
     uuid: str
-    name: str 
+    name: str
     age: int
 
 with DB_Handler("hello") as db:
-    test1 = TestCase(uuid=str(uuid4()), name="Bob", age=12)
+    test1 = Person(uuid=str(uuid4()), name="Bob", age=12)
     db.add("Test", test1)
     for x in db("Test"):
         assert issubclass(x.__class__, BaseModel)
-        assert isinstance(x, TestCase)
+        assert isinstance(x, Person)
         print(x)
     db.save("hello_world.db")
-    
-    1/0
 
-#>>> uuid='04d6dfad-0ce5-4222-8686-22348e1f0c0b' name='Bob' age=12
-#>>> ---------------------------------------------------------------------------
-#>>> ZeroDivisionError    Traceback (most recent call last)
-#>>> ~\AppData\Local\Temp/ipykernel_20124/1430346317.py in <module>
-#>>>      17     db.save("hello_world.db")
-#>>>      18 
-#>>> ---> 19     1/0
-#>>> 
-#>>> ZeroDivisionError: division by zero
+    raise Exception("test")
 ```
