@@ -1,4 +1,5 @@
 import importlib
+import inspect
 import json
 import os
 import sqlite3
@@ -15,9 +16,9 @@ from sqlite_utils import Database as _Database
 from ._misc import convert_value_into_union_types
 
 SPECIALTYPE = [
-    typing.Any,
-    typing.Literal,
-    typing.Union]
+    Any,
+    Literal,
+    Union]
 
 
 class TableBaseModel:
@@ -51,30 +52,6 @@ class DataBase():
         for row in self._db[tablename].rows:
             yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
 
-    def _special_conversion(self, field_value: Any) -> Union[bool, Any]:
-
-        def special_possible(obj_class):
-            try:
-                if not hasattr(obj_class.SQConfig, 'convert'):
-                    return False
-                return True if obj_class.SQConfig.special_insert else False
-            except AttributeError:
-                return False
-
-        if isinstance(field_value, List):
-            if len(field_value) == 0:
-                return False
-
-            if not special_possible(obj_class := field_value[0].__class__):
-                return False
-            if not all(isinstance(value, type(field_value[0])) for value in field_value):
-                raise ValueError(f"not all values in the List are from the same type: '{field_value}'")
-            return [obj_class.SQConfig.convert(value) for value in field_value]
-        else:
-            if not special_possible(obj_class := field_value.__class__):
-                return False
-            return obj_class.SQConfig.convert(field_value)
-
     def add(
             self,
             tablename: str,
@@ -104,10 +81,20 @@ class DataBase():
             if res := self._special_conversion(field_value):  # Special Insert with SQConfig.convert
                 data_for_save[field_name] = res
 
-            elif field.annotation in SPECIALTYPE or typing.get_origin(field.annotation):
-                # typing._SpecialForm: Any, NoReturn, ClassVar, Union, Optional
-                # typing.get_origin(field.annotation) -> e.g. Literal
-                data_for_save[field_name] = self._typing_conversion(field, field_value)
+            elif field.annotation == Any or get_origin(field.annotation) is Union:
+                data_for_save[field_name] = field_value
+
+            elif get_origin(field.annotation) is Literal:
+                data_for_save[field_name] = str(field_value)
+
+            elif get_origin(field.annotation) is list:
+                obj = typing.get_args(field.annotation)[0]
+                if inspect.isclass(obj) and issubclass(obj, BaseModel):
+                    data_for_save[field_name] = [x.uuid for x in field_value]
+                    foreign_table_name = self.get_check_foreign_table_name(field_name, foreign_tables)
+                    foreign_keys.append((field_name, foreign_table_name, pk))
+                else:
+                    data_for_save[field_name] = [str(x) for x in field_value]
 
             elif issubclass(field.annotation, BaseModel):
                 # the value has got a field which is of type BaseModel, so this filed must be in a foreign table
@@ -258,14 +245,26 @@ class DataBase():
         else:
             return [add_nested_model(element) for element in field_value]
 
-    def _typing_conversion(self, field: FieldInfo, field_value) -> typing.Any:
-        if field.annotation == typing.Any:
-            return field_value
-        elif get_origin(field.annotation) is list:
-            return [str(x) for x in field_value]
-        elif get_origin(field.annotation) is Union:
-            return field_value
-        elif get_origin(field.annotation) is Literal:
-            return str(field_value)
+    def _special_conversion(self, field_value: Any) -> Union[bool, Any]:
+
+        def special_possible(obj_class):
+            try:
+                if not hasattr(obj_class.SQConfig, 'convert'):
+                    return False
+                return True if obj_class.SQConfig.special_insert else False
+            except AttributeError:
+                return False
+
+        if isinstance(field_value, List):
+            if len(field_value) == 0:
+                return False
+
+            if not special_possible(obj_class := field_value[0].__class__):
+                return False
+            if not all(isinstance(value, type(field_value[0])) for value in field_value):
+                raise ValueError(f"not all values in the List are from the same type: '{field_value}'")
+            return [obj_class.SQConfig.convert(value) for value in field_value]
         else:
-            raise NotImplementedError(f"type {field.annotation} is not supported yet")
+            if not special_possible(obj_class := field_value.__class__):
+                return False
+            return obj_class.SQConfig.convert(field_value)
