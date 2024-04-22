@@ -90,7 +90,9 @@ class DataBase():
             elif get_origin(field.annotation) is list:
                 obj = typing.get_args(field.annotation)[0]
                 if inspect.isclass(obj) and issubclass(obj, BaseModel):
-                    data_for_save[field_name] = [str(x) for x in field_value]
+                    data_for_save[field_name] = [x.uuid for x in field_value]
+                    foreign_table_name = self.get_check_foreign_table_name(field_name, foreign_tables)
+                    foreign_keys.append((field_name, foreign_table_name, pk))
                 else:
                     data_for_save[field_name] = [str(x) for x in field_value]
 
