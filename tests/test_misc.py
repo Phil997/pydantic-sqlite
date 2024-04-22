@@ -3,7 +3,7 @@ import os
 import pytest
 from testfixtures import TempDirectory
 
-from pydantic_sqlite._misc import uniquify
+from pydantic_sqlite._misc import get_unique_filename
 
 
 @pytest.fixture()
@@ -17,6 +17,6 @@ def test_uniquify(dir):
     examples = 10
 
     for _ in range(examples):
-        dir.write(uniquify(testfile), b'some foo thing')
+        dir.write(get_unique_filename(testfile), b'some foo thing')
 
     assert len(set(os.listdir(dir.path))) == examples

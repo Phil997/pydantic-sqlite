@@ -2,7 +2,7 @@ import os
 from contextlib import contextmanager
 
 from ._core import DataBase
-from ._misc import uniquify
+from ._misc import get_unique_filename
 
 
 class DB_Handler:
@@ -22,7 +22,7 @@ class DB_Handler:
     def __exit__(self, exc_type, exc, tb):
         assert self._ctx is not None, "Context was not entered"
         if exc_type:
-            self.db.save(filename=uniquify(f"{self.dbname[:-3]}_crash.db"))
+            self.db.save(filename=get_unique_filename(f"{self.dbname[:-3]}_crash.db"))
         return self._ctx.__exit__(exc_type, exc, tb)
 
     @contextmanager
