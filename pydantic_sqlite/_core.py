@@ -112,7 +112,7 @@ class DataBase:
         )
 
         foreign_keys = []
-        for field_name, field in value.model_fields.items():
+        for field_name, field_info in value.model_fields.items():
             field_value = getattr(value, field_name)
 
             if res := self._special_conversion(
@@ -120,14 +120,14 @@ class DataBase:
             ):  # Special Insert with SQConfig.convert
                 data_for_save[field_name] = res
 
-            elif field.annotation == Any or get_origin(field.annotation) is Union:
+            elif field_info.annotation == Any or get_origin(field_info.annotation) is Union:
                 data_for_save[field_name] = field_value
 
-            elif get_origin(field.annotation) is Literal:
+            elif get_origin(field_info.annotation) is Literal:
                 data_for_save[field_name] = str(field_value)
 
-            elif get_origin(field.annotation) is list:
-                obj = typing.get_args(field.annotation)[0]
+            elif get_origin(field_info.annotation) is list:
+                obj = typing.get_args(field_info.annotation)[0]
                 if inspect.isclass(obj) and issubclass(obj, BaseModel):
                     data_for_save[field_name] = [x.uuid for x in field_value]
                     foreign_table_name = self.get_check_foreign_table_name(
@@ -137,7 +137,7 @@ class DataBase:
                 else:
                     data_for_save[field_name] = [str(x) for x in field_value]
 
-            elif issubclass(field.annotation, BaseModel):
+            elif inspect.isclass(field_info.annotation) and issubclass(field_info.annotation, BaseModel):
                 # the value has got a field which is of type BaseModel, so this filed must be in a foreign table
                 # if the field is already in the Table it continues, but if is it not in the table it will add this
                 # to the table recursive call to self.add
