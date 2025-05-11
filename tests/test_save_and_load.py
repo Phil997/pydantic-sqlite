@@ -37,6 +37,14 @@ def db():
     assert len(list(db(TEST_TABLE_NAME))) == LENGTH
     return db
 
+@pytest.fixture()
+def persistent_db(dir):
+    db = DataBase(filename_or_conn=(dir + TEST_DB_NAME))
+    for _ in range(LENGTH):
+        foo = Foo(uuid=str(uuid4()), name="unitest")
+        db.add(TEST_TABLE_NAME, foo)
+    assert len(list(db(TEST_TABLE_NAME))) == LENGTH
+    return db
 
 def test_save_with_file_ending(dir, db):
     db.save(dir + "hello.db")
@@ -145,3 +153,15 @@ def test_handler_save_multiple_ExceptionDB_on_exception(dir, db):
         with DB_Handler(dir + TEST_DB_NAME) as _:
             raise DummyExeption()
     assert f"{TEST_DB_NAME[:-3]}_crash(1).db" in os.listdir(dir)
+
+def test_persistent_db_save(persistent_db):
+    filename = persistent_db._db.conn.execute("PRAGMA database_list").fetchone()[2]
+    
+    with mock.patch('logging.warning') as mock_warning:
+        persistent_db.save(TEST_DB_NAME)
+    
+        mock_warning.assert_called_once_with(
+            f"database is persistent, already stored in a file: {filename}"
+        )
+        # Verify no file operations were performed
+        assert not os.path.exists("_backup.db")

@@ -8,6 +8,7 @@ import tempfile
 import typing
 from shutil import copyfile
 from typing import Any, Generator, List, Literal, Union, get_origin
+from pathlib import Path
 
 from pydantic import BaseModel
 from pydantic._internal._model_construction import ModelMetaclass
@@ -39,9 +40,12 @@ class TableBaseModel:
 
 class DataBase():
 
-    def __init__(self, **kwargs):
+    def __init__(self, filename_or_conn: Union[str, Path, sqlite3.Connection, None] = None, **kwargs):
         self._basemodels = {}
-        self._db = _Database(memory=True)
+        if filename_or_conn is None:
+            self._db = _Database(memory=True, **kwargs)
+        else:
+            self._db = _Database(filename_or_conn, **kwargs)
 
     def __call__(self, tablename) -> Generator[BaseModel, None, None]:
         """returns a Generator for all values in the Table. The returned values are subclasses of pydantic.BaseModel"""
@@ -172,8 +176,25 @@ class DataBase():
                 basemodel_cls=getattr(my_module, classname),
                 pks=json.loads(model['pks']))
 
+    @property
+    def is_in_memory(self) -> bool:
+        db_filename = self._db.conn.execute("PRAGMA database_list").fetchone()[2]
+        if db_filename == '' or db_filename == ':memory:':
+            return True
+        else:
+            return False
+
     def save(self, filename: str) -> None:
-        """saves alle values from the in_memory database to a file"""
+        """saves all values from the in-memory database to a file
+        
+        Note:
+            If the database is persistent, the function will do nothing and return None.
+        """
+
+        if not self.is_in_memory:
+            logging.warning(f"database is persistent, already stored in a file: {self._db.conn.execute('PRAGMA database_list').fetchone()[2]}")
+            return
+        
         if not filename.endswith(".db"):
             filename += ".db"
 
