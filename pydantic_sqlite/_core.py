@@ -177,12 +177,15 @@ class DataBase():
                 pks=json.loads(model['pks']))
 
     @property
-    def is_in_memory(self) -> bool:
+    def filename(self) -> str:
+        """returns the filename of the database.
+        If the database is in-memory, the function will return `:memory:`
+        """
         db_filename = self._db.conn.execute("PRAGMA database_list").fetchone()[2]
-        if db_filename == '' or db_filename == ':memory:':
-            return True
+        if db_filename in {'', ':memory:'}:
+            return ':memory:'
         else:
-            return False
+            return db_filename
 
     def save(self, filename: str) -> None:
         """saves all values from the in-memory database to a file
@@ -191,7 +194,7 @@ class DataBase():
             If the database is persistent, the function will do nothing and return None.
         """
 
-        if not self.is_in_memory:
+        if self.filename == ':memory:':
             logging.warning(f"database is persistent, already stored in a file: {self._db.conn.execute('PRAGMA database_list').fetchone()[2]}")
             return
         
