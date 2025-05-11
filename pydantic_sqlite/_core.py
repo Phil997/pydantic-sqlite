@@ -195,7 +195,7 @@ class DataBase():
         """
 
         if self.filename == ':memory:':
-            logging.warning(f"database is persistent, already stored in a file: {self._db.conn.execute('PRAGMA database_list').fetchone()[2]}")
+            logging.warning(f"database is persistent, already stored in a file: {self.filename}")
             return
         
         if not filename.endswith(".db"):
