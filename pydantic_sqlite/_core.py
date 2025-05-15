@@ -219,7 +219,7 @@ class DataBase:
             If the database is persistent, the function will do nothing and return None.
         """
 
-        if self.filename == ":memory:":
+        if self.filename != ":memory:":
             logging.warning(
                 f"database is persistent, already stored in a file: {self.filename}"
             )
