@@ -167,3 +167,6 @@ def test_persistent_db_save(persistent_db):
         )
         # Verify no file operations were performed
         assert not os.path.exists("_backup.db")
+    
+    # Close the database connection before the test ends
+    persistent_db._db.conn.close()
