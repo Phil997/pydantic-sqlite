@@ -43,14 +43,29 @@ class DataBase():
         self._basemodels = {}
         self._db = _Database(memory=True)
 
-    def __call__(self, tablename) -> Generator[BaseModel, None, None]:
-        """returns a Generator for all values in the Table. The returned values are subclasses of pydantic.BaseModel"""
+    def __call__(self, tablename, where_kwargs: dict = None) -> Generator[BaseModel, None, None]:
+        """returns a Generator for all values in the Table. The returned values are subclasses of pydantic.BaseModel
+        Args:
+            tablename: name of the table
+            where_kwargs: kwargs dict for `rows_where` method of sqlite_utils.Database, including:
+                - where: str, e.g. "uuid = ?"
+                - where_args: list, e.g. ["123"]
+                - order_by: str, e.g. "uuid DESC"
+                - limit: int, e.g. 10
+                - offset: int, e.g. 0
+
+        """
         try:
             basemodel = self._basemodels[tablename]
             foreign_refs = {key.column: key.other_table for key in self._db[tablename].foreign_keys}
         except KeyError:
             raise KeyError(f"can not find Table: {tablename} in Database") from None
-        for row in self._db[tablename].rows:
+        
+        if where_kwargs:
+            for row in self._db[tablename].rows_where(**where_kwargs):
+                yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
+        else:
+            for row in self._db[tablename].rows:
             yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
 
     def add(
