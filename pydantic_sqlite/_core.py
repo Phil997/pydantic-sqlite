@@ -66,7 +66,7 @@ class DataBase():
                 yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
         else:
             for row in self._db[tablename].rows:
-            yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
+                yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
 
     def add(
             self,
