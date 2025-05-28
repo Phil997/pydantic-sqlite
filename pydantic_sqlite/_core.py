@@ -47,7 +47,8 @@ class DataBase():
         """returns a Generator for all values in the Table. The returned values are subclasses of pydantic.BaseModel
         Args:
             tablename: name of the table
-            kwargs: Any additional key argument will be passed to the `rows_where` method of sqlite_utils.Database, including:
+            kwargs: Any additional key argument will be passed to the `rows_where` method of sqlite_utils.Database,
+            including:
                     - where: str, e.g. "uuid = ?" or "uuid = :uuid"
                     - where_args: list, e.g. ["123"] or {"uuid": "123"}
                     - order_by: str, e.g. "uuid DESC"
@@ -62,7 +63,6 @@ class DataBase():
 
         for row in self._db[tablename].rows_where(**kwargs):
             yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
-        
 
     def add(
             self,

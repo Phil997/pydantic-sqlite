@@ -113,16 +113,17 @@ def make_filled_db(values):
         db.add("Test", ex)
     return db
 
+
 @given(values=st.lists(example_values(), min_size=10, max_size=20))
-@pytest.mark.parametrize("params", 
-    [
-        {'where': 'uuid = :uuid', 'where_args': {'uuid': '123'}},
-        {'limit': 2, 'offset': 1},
-        {'order_by': 'ex_str'},
-        {'order_by': 'ex_str', 'limit': 2},
-        {'select': 'ex_str,uuid,ex_int,ex_float,ex_bool,ex_list'},
-    ]
-)
+@pytest.mark.parametrize("params",
+                         [
+                                {'where': 'uuid = :uuid', 'where_args': {'uuid': '123'}},
+                                {'limit': 2, 'offset': 1},
+                                {'order_by': 'ex_str'},
+                                {'order_by': 'ex_str', 'limit': 2},
+                                {'select': 'ex_str,uuid,ex_int,ex_float,ex_bool,ex_list'},
+                         ]
+                         )
 def test_where_kwargs(values, params):
     filled_db = make_filled_db(values)
 
@@ -144,7 +145,6 @@ def test_where_kwargs(values, params):
     if "select" in params:
         # ex_date is optional. here we won't select it and check if it falls back to None
         for el in result:
-            assert all(hasattr(el, attr.strip()) for attr in params["select"].split(",")), f'No attribute in the result: { {attr: getattr(el, attr.strip()) for attr in params["select"].split(",")} } for {el}'
+            assert all(hasattr(el, attr.strip()) for attr in params["select"].split(",")), el
             if 'ex_date' not in params["select"]:
                 assert el.ex_date is None
-    
