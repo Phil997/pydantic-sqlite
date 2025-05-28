@@ -60,9 +60,14 @@ class DataBase():
             foreign_refs = {key.column: key.other_table for key in self._db[tablename].foreign_keys}
         except KeyError:
             raise KeyError(f"can not find Table: {tablename} in Database") from None
+        
+        if kwargs:
+            for row in self._db[tablename].rows_where(**kwargs):
+                yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
+        else:
+            for row in self._db[tablename].rows:
+                yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
 
-        for row in self._db[tablename].rows_where(**kwargs):
-            yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
 
     def add(
             self,
