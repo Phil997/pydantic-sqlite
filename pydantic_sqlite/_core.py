@@ -44,7 +44,7 @@ class DataBase():
         self._db = _Database(memory=True)
 
     def __call__(self, tablename, **kwargs) -> Generator[BaseModel, None, None]:
-        """returns a Generator for all values in the Table. The returned values are subclasses of pydantic.BaseModel
+        """returns a Generator for all values in the Table. The returned values are subclasses of `pydantic.BaseModel`.
         Args:
             tablename: name of the table
             kwargs: Any additional key argument will be passed to the `rows_where` method of sqlite_utils.Database,
@@ -60,14 +60,13 @@ class DataBase():
             foreign_refs = {key.column: key.other_table for key in self._db[tablename].foreign_keys}
         except KeyError:
             raise KeyError(f"can not find Table: {tablename} in Database") from None
-        
+
         if kwargs:
             for row in self._db[tablename].rows_where(**kwargs):
                 yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
         else:
             for row in self._db[tablename].rows:
                 yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
-
 
     def add(
             self,
@@ -155,7 +154,8 @@ class DataBase():
 
     def value_from_table(self, tablename: str, uuid: str) -> typing.Any:
         """
-        searchs the Objekt with the given uuid in the table and returns it.
+        searchs the Object with the given uuid in the table and returns it.
+
         Returns a subclass of type pydantic.BaseModel
         """
         hits = [row for row in self._db[tablename].rows_where("uuid = ?", [uuid])]
