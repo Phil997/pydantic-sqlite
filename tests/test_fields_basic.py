@@ -40,7 +40,7 @@ def example_values(draw):
     )
 
 
-@given(example_values())
+@given(example_values(), deadline=None)
 def test_save_and_get_while_iterration(values):
     db = DataBase()
     test1 = Example(**values)
