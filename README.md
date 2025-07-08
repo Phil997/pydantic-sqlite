@@ -130,6 +130,13 @@ for y in db("Persons"):
 
 #>>> uuid='802f50d6-b6a2-47f4-bb96-4375790daed9' name='Bob' address=Address(town='Berlin', street='Bahnhofstraße 67')
 #>>> uuid='79488c0d-44c8-4a6a-afa3-1ed0b88af4a2' name='Alice' address=Address(town='Berlin', street='Bahnhofstraße 67')
+
+
+for y in db("Persons", where='name= :name', where_args={'name':'Alice'}):
+    assert issubclass(y.__class__, BaseModel)
+    assert isinstance(y, Person)
+    print(y)
+#>>> uuid='79488c0d-44c8-4a6a-afa3-1ed0b88af4a2' name='Alice' address=Address(town='Berlin', street='Bahnhofstraße 67')
 ```
 
 # DB_Handler

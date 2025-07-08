@@ -45,8 +45,18 @@ class DataBase:
         else:
             self._db = _Database(filename_or_conn, **kwargs)
 
-    def __call__(self, tablename) -> Generator[BaseModel, None, None]:
-        """returns a Generator for all values in the Table. The returned values are subclasses of pydantic.BaseModel"""
+    def __call__(self, tablename, **kwargs) -> Generator[BaseModel, None, None]:
+        """returns a Generator for all values in the Table. The returned values are subclasses of `pydantic.BaseModel`.
+        Args:
+            tablename: name of the table
+            kwargs: Any additional key argument will be passed to the `rows_where` method of sqlite_utils.Database,
+            including:
+                    - where: str, e.g. "uuid = ?" or "uuid = :uuid"
+                    - where_args: list, e.g. ["123"] or {"uuid": "123"}
+                    - order_by: str, e.g. "uuid DESC"
+                    - limit: int, e.g. 10
+                    - offset: int, e.g. 0
+        """
         try:
             basemodel = self._basemodels[tablename]
             foreign_refs = {
@@ -54,8 +64,13 @@ class DataBase:
             }
         except KeyError:
             raise KeyError(f"can not find Table: {tablename} in Database") from None
-        for row in self._db[tablename].rows:
-            yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
+
+        if kwargs:
+            for row in self._db[tablename].rows_where(**kwargs):
+                yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
+        else:
+            for row in self._db[tablename].rows:
+                yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
 
     def add(
         self,
@@ -157,7 +172,8 @@ class DataBase:
 
     def value_from_table(self, tablename: str, uuid: str) -> typing.Any:
         """
-        searchs the Objekt with the given uuid in the table and returns it.
+        searchs the Object with the given uuid in the table and returns it.
+
         Returns a subclass of type pydantic.BaseModel
         """
         hits = [row for row in self._db[tablename].rows_where("uuid = ?", [uuid])]
