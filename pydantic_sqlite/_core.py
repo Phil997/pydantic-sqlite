@@ -21,6 +21,16 @@ SPECIALTYPE = [Any, Literal, Union]
 
 
 class TableBaseModel:
+    """
+    Stores metadata about a table and its associated Pydantic BaseModel class.
+
+    Attributes:
+        table (str): The name of the table.
+        basemodel_cls (ModelMetaclass): The Pydantic BaseModel class for the table.
+        modulename (str): The module name of the BaseModel class.
+        pks (List[str]): List of primary key field names.
+    """
+
     table: str
     basemodel_cls: ModelMetaclass
     modulename: str
@@ -29,16 +39,33 @@ class TableBaseModel:
     def __init__(
         self, table: str, basemodel_cls: ModelMetaclass, pks: List[str]
     ) -> None:
+        """
+        Initialize TableBaseModel with table name, BaseModel class, and primary keys.
+
+        Args:
+            table (str): The name of the table.
+            basemodel_cls (ModelMetaclass): The Pydantic BaseModel class for the table.
+            pks (List[str]): List of primary key field names.
+        """
         self.table = table
         self.basemodel_cls = basemodel_cls
         self.modulename = str(basemodel_cls).split("<class '")[1].split("'>")[0]
         self.pks = pks
 
     def data(self) -> Dict[str, Union[str, List[str]]]:
+        """
+        Return a dictionary representation of the table metadata.
+        """
         return dict(table=self.table, modulename=self.modulename, pks=self.pks)
 
 
 class DataBase:
+    """
+    Main interface for storing and retrieving Pydantic BaseModels in an SQLite database.
+    Provides methods for adding, querying, saving, and loading models,
+    as well as handling foreign keys and nested models.
+    """
+
     _basemodels: Dict[str, TableBaseModel]
     _db: _Database
 
@@ -47,6 +74,14 @@ class DataBase:
         filename_or_conn: Union[str, Path, sqlite3.Connection, None] = None,
         **kwargs,
     ) -> None:
+        """
+        Initialize the DataBase. If no filename or connection is provided, creates an in-memory database.
+
+        Args:
+            filename_or_conn (Union[str, Path, sqlite3.Connection, None], optional):
+                The filename, Path, or sqlite3.Connection to use for the database. If None, uses in-memory DB.
+            **kwargs: Additional keyword arguments passed to sqlite_utils.Database.
+        """
         self._basemodels = {}
         if filename_or_conn is None:
             self._db = _Database(memory=True, **kwargs)
@@ -54,16 +89,15 @@ class DataBase:
             self._db = _Database(filename_or_conn, **kwargs)
 
     def __call__(self, tablename: str, **kwargs) -> Generator[BaseModel, None, None]:
-        """returns a Generator for all values in the Table. The returned values are subclasses of `pydantic.BaseModel`.
+        """
+        Returns a generator for all values in the table as subclasses of `pydantic.BaseModel`.
+
         Args:
-            tablename: name of the table
-            kwargs: Any additional key argument will be passed to the `rows_where` method of sqlite_utils.Database,
-            including:
-                    - where: str, e.g. "uuid = ?" or "uuid = :uuid"
-                    - where_args: list, e.g. ["123"] or {"uuid": "123"}
-                    - order_by: str, e.g. "uuid DESC"
-                    - limit: int, e.g. 10
-                    - offset: int, e.g. 0
+            tablename (str): Name of the table.
+            kwargs: Additional arguments passed to `rows_where` (e.g., where, where_args, order_by, limit, offset).
+
+        Yields:
+            BaseModel: Instances from the table.
         """
         try:
             basemodel = self._basemodels[tablename]
@@ -78,8 +112,8 @@ class DataBase:
 
     @property
     def filename(self) -> str:
-        """returns the filename of the database.
-        If the database is in-memory, the function will return `:memory:`
+        """
+        Returns the filename of the database. If in-memory, returns ':memory:'.
         """
         db_filename = self._db.conn.execute("PRAGMA database_list").fetchone()[2]
         if db_filename in {"", ":memory:"}:
@@ -95,8 +129,16 @@ class DataBase:
         update_nested_models: bool = True,
         pk: str = "uuid",
     ) -> None:
-        """adds a new value to the table tablename"""
+        """
+        Adds a new value to the specified table. Handles nested models and foreign keys.
 
+        Args:
+            tablename (str): The name of the table.
+            value (BaseModel): The value to be added, as a Pydantic BaseModel instance.
+            foreign_tables (dict, optional): A dictionary of foreign tables and their mappings.
+            update_nested_models (bool, optional): Whether to update nested models if they already exist.
+            pk (str, optional): The primary key field name. Defaults to "uuid".
+        """
         # unkown Tablename -> means new Table -> update the table_basemodel_ref list
         if tablename not in self._basemodels:
             self._basemodels_add_model(
@@ -158,6 +200,16 @@ class DataBase:
         self._db[tablename].upsert(data_for_save, pk=pk, foreign_keys=foreign_keys)
 
     def get_check_foreign_table_name(self, field_name: str, foreign_tables: dict) -> str:
+        """
+        Checks and returns the foreign table name for a given field.
+
+        Args:
+            field_name (str): The name of the field.
+            foreign_tables (dict): A dictionary of foreign tables and their mappings.
+
+        Returns:
+            str: The name of the foreign table.
+        """
         if field_name not in foreign_tables.keys():
             keys = list(foreign_tables.keys())
             msg = f"detect field of Type BaseModel, but can not find '{field_name}'"
@@ -173,7 +225,16 @@ class DataBase:
         return foreign_table_name
 
     def uuid_in_table(self, tablename: str, uuid: str) -> bool:
-        """checks if the given uuid is used as a primary key in the table"""
+        """
+        Checks if the given uuid is used as a primary key in the table.
+
+        Args:
+            tablename (str): The name of the table.
+            uuid (str): The uuid to check.
+
+        Returns:
+            bool: True if the uuid exists in the table, False otherwise.
+        """
         hits = [row for row in self._db[tablename].rows_where("uuid = ?", [uuid])]
         if len(hits) > 1:
             raise Exception(
@@ -182,14 +243,29 @@ class DataBase:
         return False if not hits else True
 
     def value_in_table(self, tablename: str, value: BaseModel) -> bool:
-        """checks if the given value is in the table"""
+        """
+        Checks if the given value is in the table by uuid.
+
+        Args:
+            tablename (str): The name of the table.
+            value (BaseModel): The value to check, as a Pydantic BaseModel instance.
+
+        Returns:
+            bool: True if the value exists in the table, False otherwise.
+        """
         return self.uuid_in_table(tablename, value.uuid)
 
     def value_from_table(self, tablename: str, uuid: str) -> typing.Any:
         """
-        searchs the Object with the given uuid in the table and returns it.
+        Searches for the object with the given uuid in the table and returns it as a subclass of pydantic.BaseModel.
+        Returns None if not found.
 
-        Returns a subclass of type pydantic.BaseModel
+        Args:
+            tablename (str): The name of the table.
+            uuid (str): The uuid of the object to retrieve.
+
+        Returns:
+            typing.Any: The found object as a BaseModel subclass, or None if not found.
         """
         hits = [row for row in self._db[tablename].rows_where("uuid = ?", [uuid])]
         if len(hits) > 1:
@@ -210,11 +286,25 @@ class DataBase:
         )
 
     def values_in_table(self, tablename: str) -> int:
-        """returns the number of values in the Table"""
+        """
+        Returns the number of values in the table.
+
+        Args:
+            tablename (str): The name of the table.
+
+        Returns:
+            int: The number of values in the table.
+        """
         return self._db[tablename].count
 
     def load(self, filename: str) -> None:
-        """loads all data from the given file and adds them to the in-memory database"""
+        """
+        Loads all data from the given file and adds them to the in-memory database.
+        Raises FileNotFoundError if the file does not exist.
+
+        Args:
+            filename (str): The path to the file to load.
+        """
         if not os.path.isfile(filename):
             raise FileNotFoundError(f"Can not load {filename}")
         file_db = sqlite3.connect(filename)
@@ -233,12 +323,13 @@ class DataBase:
             )
 
     def save(self, filename: str) -> None:
-        """saves all values from the in-memory database to a file
-
-        Note:
-            If the database is persistent, the function will do nothing and return None.
         """
+        Saves all values from the in-memory database to a file.
+        If the database is persistent, does nothing and returns None.
 
+        Args:
+            filename (str): The path to the file where the database should be saved.
+        """
         if self.filename != ":memory:":
             logging.warning(
                 f"database is persistent, already stored in a file: {self.filename}"
@@ -266,6 +357,12 @@ class DataBase:
             raise
 
     def _basemodels_add_model(self, **kwargs) -> None:
+        """
+        Adds a TableBaseModel to the internal registry and upserts its metadata.
+
+        Args:
+            **kwargs: TableBaseModel attributes (table, basemodel_cls, pks).
+        """
         model = TableBaseModel(**kwargs)
         self._basemodels.update({kwargs["table"]: model})
         self._db["__basemodels__"].upsert(model.data(), pk="modulename")
@@ -273,6 +370,17 @@ class DataBase:
     def _build_basemodel_from_dict(
         self, tablemodel: TableBaseModel, row: dict, foreign_refs: dict
     ) -> BaseModel:
+        """
+        Builds a BaseModel instance from a row dictionary, handling nested and foreign key fields.
+
+        Args:
+            tablemodel (TableBaseModel): The TableBaseModel instance for the table.
+            row (dict): The row data as a dictionary.
+            foreign_refs (dict): A dictionary of foreign key references.
+
+        Returns:
+            BaseModel: The constructed BaseModel instance.
+        """
         # returns a subclass object of type BaseModel which is build out of
         # class basemodel.basemodel_cls and the data out of the dict
         field_models: Dict[str, FieldInfo] = tablemodel.basemodel_cls.model_fields
@@ -306,6 +414,18 @@ class DataBase:
     def _upsert_value_in_foreign_table(
         self, field_value: typing.Any, foreign_table_name: str, update_nested_models: bool
     ) -> Union[str, List[str]]:
+        """
+        Inserts or upserts a nested BaseModel or list of BaseModels into a foreign table.
+        Returns the uuid(s) of the inserted/updated values.
+
+        Args:
+            field_value (typing.Any): The nested BaseModel or list of BaseModels to insert or upsert.
+            foreign_table_name (str): The name of the foreign table.
+            update_nested_models (bool): Whether to update nested models if they already exist.
+
+        Returns:
+            Union[str, List[str]]: The uuid or list of uuids of the inserted/updated values.
+        """
         # The nested BaseModel will be inserted or upserted to the foreign table if it is not contained there,
         # or the update_nested_models parameter is True. If the value is Iterable (e.g. List) all values in the
         # List will be be inserted or upserted. The function returns the ids of the values
@@ -330,6 +450,16 @@ class DataBase:
             return [add_nested_model(element) for element in field_value]
 
     def _special_conversion(self, field_value: Any) -> Union[bool, Any]:
+        """
+        Handles special conversion for fields with SQConfig and custom convert methods.
+        Returns the converted value or False if not applicable.
+
+        Args:
+            field_value (Any): The field value to convert.
+
+        Returns:
+            Union[bool, Any]: The converted value or False.
+        """
         def special_possible(obj_class):
             try:
                 if not hasattr(obj_class.SQConfig, "convert"):
