@@ -132,7 +132,7 @@ for y in db("Persons"):
 #>>> uuid='79488c0d-44c8-4a6a-afa3-1ed0b88af4a2' name='Alice' address=Address(town='Berlin', street='Bahnhofstraße 67')
 
 
-for y in db("Persons", where='name= :name', where_args={'name':'Alice'}):
+for y in db("Persons", where='name= :name', where_args={'name': 'Alice'}):
     assert issubclass(y.__class__, BaseModel)
     assert isinstance(y, Person)
     print(y)
@@ -140,12 +140,13 @@ for y in db("Persons", where='name= :name', where_args={'name':'Alice'}):
 ```
 
 # DB_Handler
-The DB_handler serves as a wrapper for the DataBase. The database returned by the context manager functions identically to those in previous examples.
+The `DB_Handler` serves as a context manager wrapper for the `DataBase`. The database returned by the context manager functions identically to those in previous examples.
 
-However, the handler offers an added benefit: in case of an exception, it automatically saves a database snapshot with the latest values as '<<dbname_crash>>.db'. If such a file already exists, the filename is iteratively incremented.
+However, the handler offers an added benefit: in case of an exception, it automatically saves a database snapshot with the latest values as `<<dbname>_snapshot.db` (by default). If such a file already exists, the filename is iteratively incremented (e.g., `<<dbname>_snapshot(1).db`).
 
-For instance, running this example generates two files: 'hello.db' and 'hello_crash.db'. Executing the script again, a snapchot file called 'hello_crash(1).db' will be created
+You can also configure the snapshot suffix using the `snapshot_suffix` argument in the constructor.
 
+For instance, running this example generates two files: `humans.db` and `humans_snapshot.db`. Executing the script again, a snapshot file called `humans_snapshot(1).db` will be created.
 
 ```python
 from uuid import uuid4
@@ -157,7 +158,7 @@ class Person(BaseModel):
     name: str
     age: int
 
-with DB_Handler("hello") as db:
+with DB_Handler("humans", snapshot_suffix="_snapshot.db") as db:
     test1 = Person(uuid=str(uuid4()), name="Bob", age=12)
     db.add("Test", test1)
     for x in db("Test"):
@@ -166,5 +167,5 @@ with DB_Handler("hello") as db:
         print(x)
     db.save("hello_world.db")
 
-    raise Exception("test")
+    raise Exception("test")  # simulate an Exception which results in a new snapshot file
 ```
