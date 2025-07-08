@@ -8,7 +8,7 @@ import tempfile
 import typing
 from pathlib import Path
 from shutil import copyfile
-from typing import Any, Generator, List, Literal, Union, get_origin
+from typing import Any, Dict, Generator, List, Literal, Union, get_origin
 
 from pydantic import BaseModel
 from pydantic._internal._model_construction import ModelMetaclass
@@ -21,34 +21,39 @@ SPECIALTYPE = [Any, Literal, Union]
 
 
 class TableBaseModel:
+    table: str
+    basemodel_cls: ModelMetaclass
+    modulename: str
+    pks: List[str]
 
     def __init__(
         self, table: str, basemodel_cls: ModelMetaclass, pks: List[str]
     ) -> None:
-
         self.table = table
         self.basemodel_cls = basemodel_cls
         self.modulename = str(basemodel_cls).split("<class '")[1].split("'>")[0]
         self.pks = pks
 
-    def data(self):
+    def data(self) -> Dict[str, Union[str, List[str]]]:
         return dict(table=self.table, modulename=self.modulename, pks=self.pks)
 
 
 class DataBase:
+    _basemodels: Dict[str, TableBaseModel]
+    _db: _Database
 
     def __init__(
         self,
         filename_or_conn: Union[str, Path, sqlite3.Connection, None] = None,
         **kwargs,
-    ):
+    ) -> None:
         self._basemodels = {}
         if filename_or_conn is None:
             self._db = _Database(memory=True, **kwargs)
         else:
             self._db = _Database(filename_or_conn, **kwargs)
 
-    def __call__(self, tablename, **kwargs) -> Generator[BaseModel, None, None]:
+    def __call__(self, tablename: str, **kwargs) -> Generator[BaseModel, None, None]:
         """returns a Generator for all values in the Table. The returned values are subclasses of `pydantic.BaseModel`.
         Args:
             tablename: name of the table
@@ -86,8 +91,8 @@ class DataBase:
         self,
         tablename: str,
         value: BaseModel,
-        foreign_tables={},
-        update_nested_models=True,
+        foreign_tables: dict = dict(),
+        update_nested_models: bool = True,
         pk: str = "uuid",
     ) -> None:
         """adds a new value to the table tablename"""
@@ -152,7 +157,7 @@ class DataBase:
 
         self._db[tablename].upsert(data_for_save, pk=pk, foreign_keys=foreign_keys)
 
-    def get_check_foreign_table_name(self, field_name: str, foreign_tables: dict):
+    def get_check_foreign_table_name(self, field_name: str, foreign_tables: dict) -> str:
         if field_name not in foreign_tables.keys():
             keys = list(foreign_tables.keys())
             msg = f"detect field of Type BaseModel, but can not find '{field_name}'"
@@ -204,7 +209,7 @@ class DataBase:
             )
         )
 
-    def values_in_table(self, tablename) -> int:
+    def values_in_table(self, tablename: str) -> int:
         """returns the number of values in the Table"""
         return self._db[tablename].count
 
@@ -260,17 +265,17 @@ class DataBase:
             logging.warning(f"saved the backup file under '{backup}'")
             raise
 
-    def _basemodels_add_model(self, **kwargs):
+    def _basemodels_add_model(self, **kwargs) -> None:
         model = TableBaseModel(**kwargs)
         self._basemodels.update({kwargs["table"]: model})
         self._db["__basemodels__"].upsert(model.data(), pk="modulename")
 
     def _build_basemodel_from_dict(
         self, tablemodel: TableBaseModel, row: dict, foreign_refs: dict
-    ):
+    ) -> BaseModel:
         # returns a subclass object of type BaseModel which is build out of
         # class basemodel.basemodel_cls and the data out of the dict
-        field_models: dict[str, FieldInfo] = tablemodel.basemodel_cls.model_fields
+        field_models: Dict[str, FieldInfo] = tablemodel.basemodel_cls.model_fields
         tablemodel.basemodel_cls
         d = {}
 
@@ -299,7 +304,7 @@ class DataBase:
         return tablemodel.basemodel_cls(**d)
 
     def _upsert_value_in_foreign_table(
-        self, field_value, foreign_table_name, update_nested_models
+        self, field_value: typing.Any, foreign_table_name: str, update_nested_models: bool
     ) -> Union[str, List[str]]:
         # The nested BaseModel will be inserted or upserted to the foreign table if it is not contained there,
         # or the update_nested_models parameter is True. If the value is Iterable (e.g. List) all values in the
