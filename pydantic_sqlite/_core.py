@@ -6,9 +6,9 @@ import os
 import sqlite3
 import tempfile
 import typing
+from pathlib import Path
 from shutil import copyfile
 from typing import Any, Generator, List, Literal, Union, get_origin
-from pathlib import Path
 
 from pydantic import BaseModel
 from pydantic._internal._model_construction import ModelMetaclass
@@ -21,9 +21,11 @@ SPECIALTYPE = [Any, Literal, Union]
 
 
 class TableBaseModel:
+
     def __init__(
         self, table: str, basemodel_cls: ModelMetaclass, pks: List[str]
     ) -> None:
+
         self.table = table
         self.basemodel_cls = basemodel_cls
         self.modulename = str(basemodel_cls).split("<class '")[1].split("'>")[0]
@@ -34,6 +36,7 @@ class TableBaseModel:
 
 
 class DataBase:
+
     def __init__(
         self,
         filename_or_conn: Union[str, Path, sqlite3.Connection, None] = None,
@@ -67,6 +70,17 @@ class DataBase:
 
         for row in self._db[tablename].rows_where(**kwargs):
             yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
+
+    @property
+    def filename(self) -> str:
+        """returns the filename of the database.
+        If the database is in-memory, the function will return `:memory:`
+        """
+        db_filename = self._db.conn.execute("PRAGMA database_list").fetchone()[2]
+        if db_filename in {"", ":memory:"}:
+            return ":memory:"
+        else:
+            return db_filename
 
     def add(
         self,
@@ -212,17 +226,6 @@ class DataBase:
                 basemodel_cls=getattr(my_module, classname),
                 pks=json.loads(model["pks"]),
             )
-
-    @property
-    def filename(self) -> str:
-        """returns the filename of the database.
-        If the database is in-memory, the function will return `:memory:`
-        """
-        db_filename = self._db.conn.execute("PRAGMA database_list").fetchone()[2]
-        if db_filename in {"", ":memory:"}:
-            return ":memory:"
-        else:
-            return db_filename
 
     def save(self, filename: str) -> None:
         """saves all values from the in-memory database to a file
