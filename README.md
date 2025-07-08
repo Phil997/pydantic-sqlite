@@ -1,44 +1,61 @@
-# pydantic_sqlite
-A lightweight package designed for stroing pydantic BaseModels in an in-memory SQLite database.
+# pydantic_sqlite  <!-- omit in toc -->
+
+![Python](https://img.shields.io/badge/python-3.8%20|%203.9%20|%203.10%20|%203.11%20|%203.12%20|%203.13-blue?logo=python&logoColor=white)
+![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)
+
+
+A lightweight package for storing Pydantic BaseModels in an in-memory or file-based SQLite database.
+
+You can store any BaseModel instance directly in the database, and when querying a table, you receive fully reconstructed BaseModel objects — ready to use, just like your originals.
+
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Basic Example](#basic-example)
+  - [Nested Example](#nested-example)
+  - [Nested Example without Foreign Table](#nested-example-without-foreign-table)
+  - [DB\_Handler](#db_handler)
 
 ## Installation
 
-    pip install pydantic-sqlite
+```
+pip install pydantic-sqlite
+```
 
-## Basic Example
-Creating two instances of the class Person and store them in the 'Test' table of the database. Then, retrieve and display all records from the 'Test' table through iteration."
+## Usage
 
+### Basic Example
+Create two instances of the class `Person` and store them in the 'Test' table of the database. Then, retrieve and display all records from the 'Test' table through iteration:
 
-``` python
+```python
 from pydantic_sqlite import DataBase
 from pydantic import BaseModel
 from uuid import uuid4
 
 class Person(BaseModel):
     uuid: str
-    name: str 
+    name: str
     age: int
-        
-test1 = Person(uuid=str(uuid4()), name="Bob", age=12)
-test2 = Person(uuid=str(uuid4()), name="Alice", age=28)
+
+# Create two Person instances
+person1 = Person(uuid=str(uuid4()), name="Bob", age=12)
+person2 = Person(uuid=str(uuid4()), name="Alice", age=28)
 
 db = DataBase()
-db.add("Test", test1)
-db.add("Test", test2)
+db.add("Test", person1)
+db.add("Test", person2)
 
 for x in db("Test"):
     assert issubclass(x.__class__, BaseModel)
     assert isinstance(x, Person)
     print(x)
 
-#>>> uuid='10d002bc-9941-4943-a46b-82b8214bf618' name='Bob' age=12
-#>>> uuid='595fd605-4684-4f78-96a5-8420bdb3fc0f' name='Alice' age=28
-
+#>>> uuid='...' name='Bob' age=12
+#>>> uuid='...' name='Alice' age=28
 ```
 
-## Nested Example
+### Nested Example
 
-Instantiate an address object and two person objects, with each person having an attribute of the address type. Upon adding the person to the database, the database requires the foreign table 'Addresses' to establish the foreign key relationship. Consequently, when iterating over the 'Persons' table, it enables the reconstruction of complete 'Person' objects, each possessing an attribute of the 'Address' type.
+Instantiate an address object and two person objects, with each person having an attribute of the address type. Upon adding the person to the database, the database requires the foreign table 'Adresses' to establish the foreign key relationship. Consequently, when iterating over the 'Persons' table, it enables the reconstruction of complete 'Person' objects, each possessing an attribute of the 'Address' type.
 
 ```python
 from pydantic_sqlite import DataBase
@@ -50,10 +67,10 @@ class Address(BaseModel):
     town: str
     street: str
     number: int
-        
+
 class Person(BaseModel):
     uuid: str
-    name: str 
+    name: str
     address: Address
 
 address = Address(uuid=str(uuid4()), town="Berlin", street="Bahnhofstraße", number=67)
@@ -75,23 +92,20 @@ for y in db("Persons"):
     assert isinstance(y, Person)
     print(y)
 
-#>>> uuid='7cd5410e-cfaa-481e-a201-ad04cd959719' town='Berlin' street='Bahnhofstraße' number=67
-#>>> uuid='cc1cedaf-dac5-4fc2-a11a-41c6631271a5' name='Bob' address=Address(uuid='7cd5410e-cfaa-481e-a201-ad04cd959719', town='Berlin', street='Bahnhofstraße', number=67)
-#>>> uuid='b144ed22-d8a4-46da-8a18-e34c260d7c45' name='Alice' address=Address(uuid='7cd5410e-cfaa-481e-a201-ad04cd959719', town='Berlin', street='Bahnhofstraße', number=67)
-
+#>>> uuid='...' town='Berlin' street='Bahnhofstraße' number=67
+#>>> uuid='...' name='Bob' address=Address(...)
+#>>> uuid='...' name='Alice' address=Address(...)
 ```
 
-# Nested Example without foreign Table
+### Nested Example without Foreign Table
 If you prefer to avoid an extra table, you have the option to store an object of the BaseModel type differently.
 
 In this scenario, the address object isn't stored in a separate table but rather as a string within a column of the 'Persons' table. To achieve this, the Address class includes the SQConfig class, which must define the convert method, specifying how the object should be stored in SQLite. Upon retrieval, an Address object is reconstructed from the stored string using a field_validator.
-
 
 ```python
 from uuid import uuid4
 from pydantic import BaseModel, field_validator
 from pydantic_sqlite import DataBase
-
 
 class Address(BaseModel):
     town: str
@@ -105,7 +119,7 @@ class Address(BaseModel):
 
 class Person(BaseModel):
     uuid: str
-    name: str 
+    name: str
     address: Address
 
     @field_validator('address', mode="before")
@@ -128,18 +142,17 @@ for y in db("Persons"):
     assert isinstance(y, Person)
     print(y)
 
-#>>> uuid='802f50d6-b6a2-47f4-bb96-4375790daed9' name='Bob' address=Address(town='Berlin', street='Bahnhofstraße 67')
-#>>> uuid='79488c0d-44c8-4a6a-afa3-1ed0b88af4a2' name='Alice' address=Address(town='Berlin', street='Bahnhofstraße 67')
-
+#>>> uuid='...' name='Bob' address=Address(town='Berlin', street='Bahnhofstraße 67')
+#>>> uuid='...' name='Alice' address=Address(town='Berlin', street='Bahnhofstraße 67')
 
 for y in db("Persons", where='name= :name', where_args={'name': 'Alice'}):
     assert issubclass(y.__class__, BaseModel)
     assert isinstance(y, Person)
     print(y)
-#>>> uuid='79488c0d-44c8-4a6a-afa3-1ed0b88af4a2' name='Alice' address=Address(town='Berlin', street='Bahnhofstraße 67')
+#>>> uuid='...' name='Alice' address=Address(town='Berlin', street='Bahnhofstraße 67')
 ```
 
-# DB_Handler
+### DB_Handler
 The `DB_Handler` serves as a context manager wrapper for the `DataBase`. The database returned by the context manager functions identically to those in previous examples.
 
 However, the handler offers an added benefit: in case of an exception, it automatically saves a database snapshot with the latest values as `<<dbname>_snapshot.db` (by default). If such a file already exists, the filename is iteratively incremented (e.g., `<<dbname>_snapshot(1).db`).
