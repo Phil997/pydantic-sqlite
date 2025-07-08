@@ -6,9 +6,9 @@ import os
 import sqlite3
 import tempfile
 import typing
-from shutil import copyfile
-from typing import Any, Generator, List, Literal, Union, get_origin
 from pathlib import Path
+from shutil import copyfile
+from typing import Any, Dict, Generator, List, Literal, Union, get_origin
 
 from pydantic import BaseModel
 from pydantic._internal._model_construction import ModelMetaclass
@@ -21,6 +21,11 @@ SPECIALTYPE = [Any, Literal, Union]
 
 
 class TableBaseModel:
+    table: str
+    basemodel_cls: ModelMetaclass
+    modulename: str
+    pks: List[str]
+
     def __init__(
         self, table: str, basemodel_cls: ModelMetaclass, pks: List[str]
     ) -> None:
@@ -29,23 +34,26 @@ class TableBaseModel:
         self.modulename = str(basemodel_cls).split("<class '")[1].split("'>")[0]
         self.pks = pks
 
-    def data(self):
+    def data(self) -> Dict[str, Union[str, List[str]]]:
         return dict(table=self.table, modulename=self.modulename, pks=self.pks)
 
 
 class DataBase:
+    _basemodels: Dict[str, TableBaseModel]
+    _db: _Database
+
     def __init__(
         self,
         filename_or_conn: Union[str, Path, sqlite3.Connection, None] = None,
         **kwargs,
-    ):
+    ) -> None:
         self._basemodels = {}
         if filename_or_conn is None:
             self._db = _Database(memory=True, **kwargs)
         else:
             self._db = _Database(filename_or_conn, **kwargs)
 
-    def __call__(self, tablename, **kwargs) -> Generator[BaseModel, None, None]:
+    def __call__(self, tablename: str, **kwargs) -> Generator[BaseModel, None, None]:
         """returns a Generator for all values in the Table. The returned values are subclasses of `pydantic.BaseModel`.
         Args:
             tablename: name of the table
@@ -65,19 +73,26 @@ class DataBase:
         except KeyError:
             raise KeyError(f"can not find Table: {tablename} in Database") from None
 
-        if kwargs:
-            for row in self._db[tablename].rows_where(**kwargs):
-                yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
+        for row in self._db[tablename].rows_where(**kwargs):
+            yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
+
+    @property
+    def filename(self) -> str:
+        """returns the filename of the database.
+        If the database is in-memory, the function will return `:memory:`
+        """
+        db_filename = self._db.conn.execute("PRAGMA database_list").fetchone()[2]
+        if db_filename in {"", ":memory:"}:
+            return ":memory:"
         else:
-            for row in self._db[tablename].rows:
-                yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
+            return db_filename
 
     def add(
         self,
         tablename: str,
         value: BaseModel,
-        foreign_tables={},
-        update_nested_models=True,
+        foreign_tables: dict = dict(),
+        update_nested_models: bool = True,
         pk: str = "uuid",
     ) -> None:
         """adds a new value to the table tablename"""
@@ -102,7 +117,7 @@ class DataBase:
         )
 
         foreign_keys = []
-        for field_name, field in value.model_fields.items():
+        for field_name, field_info in value.model_fields.items():
             field_value = getattr(value, field_name)
 
             if res := self._special_conversion(
@@ -110,14 +125,14 @@ class DataBase:
             ):  # Special Insert with SQConfig.convert
                 data_for_save[field_name] = res
 
-            elif field.annotation == Any or get_origin(field.annotation) is Union:
+            elif field_info.annotation == Any or get_origin(field_info.annotation) is Union:
                 data_for_save[field_name] = field_value
 
-            elif get_origin(field.annotation) is Literal:
+            elif get_origin(field_info.annotation) is Literal:
                 data_for_save[field_name] = str(field_value)
 
-            elif get_origin(field.annotation) is list:
-                obj = typing.get_args(field.annotation)[0]
+            elif get_origin(field_info.annotation) is list:
+                obj = typing.get_args(field_info.annotation)[0]
                 if inspect.isclass(obj) and issubclass(obj, BaseModel):
                     data_for_save[field_name] = [x.uuid for x in field_value]
                     foreign_table_name = self.get_check_foreign_table_name(
@@ -127,7 +142,7 @@ class DataBase:
                 else:
                     data_for_save[field_name] = [str(x) for x in field_value]
 
-            elif issubclass(field.annotation, BaseModel):
+            elif inspect.isclass(field_info.annotation) and issubclass(field_info.annotation, BaseModel):
                 # the value has got a field which is of type BaseModel, so this filed must be in a foreign table
                 # if the field is already in the Table it continues, but if is it not in the table it will add this
                 # to the table recursive call to self.add
@@ -142,7 +157,7 @@ class DataBase:
 
         self._db[tablename].upsert(data_for_save, pk=pk, foreign_keys=foreign_keys)
 
-    def get_check_foreign_table_name(self, field_name: str, foreign_tables: dict):
+    def get_check_foreign_table_name(self, field_name: str, foreign_tables: dict) -> str:
         if field_name not in foreign_tables.keys():
             keys = list(foreign_tables.keys())
             msg = f"detect field of Type BaseModel, but can not find '{field_name}'"
@@ -194,7 +209,7 @@ class DataBase:
             )
         )
 
-    def values_in_table(self, tablename) -> int:
+    def values_in_table(self, tablename: str) -> int:
         """returns the number of values in the Table"""
         return self._db[tablename].count
 
@@ -216,17 +231,6 @@ class DataBase:
                 basemodel_cls=getattr(my_module, classname),
                 pks=json.loads(model["pks"]),
             )
-
-    @property
-    def filename(self) -> str:
-        """returns the filename of the database.
-        If the database is in-memory, the function will return `:memory:`
-        """
-        db_filename = self._db.conn.execute("PRAGMA database_list").fetchone()[2]
-        if db_filename in {"", ":memory:"}:
-            return ":memory:"
-        else:
-            return db_filename
 
     def save(self, filename: str) -> None:
         """saves all values from the in-memory database to a file
@@ -261,17 +265,17 @@ class DataBase:
             logging.warning(f"saved the backup file under '{backup}'")
             raise
 
-    def _basemodels_add_model(self, **kwargs):
+    def _basemodels_add_model(self, **kwargs) -> None:
         model = TableBaseModel(**kwargs)
         self._basemodels.update({kwargs["table"]: model})
         self._db["__basemodels__"].upsert(model.data(), pk="modulename")
 
     def _build_basemodel_from_dict(
         self, tablemodel: TableBaseModel, row: dict, foreign_refs: dict
-    ):
+    ) -> BaseModel:
         # returns a subclass object of type BaseModel which is build out of
         # class basemodel.basemodel_cls and the data out of the dict
-        field_models: dict[str, FieldInfo] = tablemodel.basemodel_cls.model_fields
+        field_models: Dict[str, FieldInfo] = tablemodel.basemodel_cls.model_fields
         tablemodel.basemodel_cls
         d = {}
 
@@ -300,7 +304,7 @@ class DataBase:
         return tablemodel.basemodel_cls(**d)
 
     def _upsert_value_in_foreign_table(
-        self, field_value, foreign_table_name, update_nested_models
+        self, field_value: typing.Any, foreign_table_name: str, update_nested_models: bool
     ) -> Union[str, List[str]]:
         # The nested BaseModel will be inserted or upserted to the foreign table if it is not contained there,
         # or the update_nested_models parameter is True. If the value is Iterable (e.g. List) all values in the

@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from pydantic_sqlite import DataBase
 
-from ._globals import SQLITE_INTEGERS_MAX, SQLITE_INTEGERS_MIN
+from ._helper import SQLITE_INTEGERS_MAX, SQLITE_INTEGERS_MIN
 
 VALID_LITERALS = ['hello', 'hi', 'hey']
 

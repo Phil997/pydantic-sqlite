@@ -6,44 +6,17 @@ import pytest
 from pydantic import BaseModel
 from testfixtures import TempDirectory
 
-from pydantic_sqlite import DataBase, DB_Handler
+from pydantic_sqlite import DataBase
 
-LENGTH = 10
-TEST_DB_NAME = "test.db"
-TEST_TABLE_NAME = "test.db"
-
-
-class DummyExeption(Exception):
-    ...
-
-
-class Foo(BaseModel):
-    uuid: str
-    name: str
-
-
-@pytest.fixture()
-def dir():
-    with TempDirectory() as dir:
-        yield dir.path + os.path.sep
-
-
-@pytest.fixture()
-def db():
-    db = DataBase()
-    for _ in range(LENGTH):
-        foo = Foo(uuid=str(uuid4()), name="unitest")
-        db.add(TEST_TABLE_NAME, foo)
-    assert len(list(db(TEST_TABLE_NAME))) == LENGTH
-    return db
+from ._helper import LENGTH, TEST_DB_NAME, TEST_TABLE_NAME, Person
 
 
 @pytest.fixture()
 def persistent_db(dir):
     db = DataBase(filename_or_conn=(dir + TEST_DB_NAME))
     for _ in range(LENGTH):
-        foo = Foo(uuid=str(uuid4()), name="unitest")
-        db.add(TEST_TABLE_NAME, foo)
+        person = Person(uuid=str(uuid4()), name="unitest")
+        db.add(TEST_TABLE_NAME, person)
     assert len(list(db(TEST_TABLE_NAME))) == LENGTH
     return db
 
@@ -65,8 +38,8 @@ def test_save_override_existing_db(dir, db):
     assert TEST_DB_NAME in os.listdir(dir)
 
     for _ in range(LENGTH):
-        foo = Foo(uuid=str(uuid4()), name="unitest")
-        db.add("Foo2", foo)
+        person = Person(uuid=str(uuid4()), name="unitest")
+        db.add("Foo2", person)
     assert len(db._db.table_names()) == 3
 
     db.save(dir + TEST_DB_NAME)
@@ -106,54 +79,9 @@ def test_save_and_load(dir, db):
     assert len(db._db.table_names()) == 2
     assert len(list(db(TEST_TABLE_NAME))) == LENGTH
 
-    for foo in db(TEST_TABLE_NAME):
-        assert issubclass(foo.__class__, BaseModel)
-        assert isinstance(foo, Foo)
-
-
-def test_handler_return_DataBase():
-    with DB_Handler() as db:
-        assert isinstance(db, DataBase)
-
-
-def test_handler_save_DataBase(dir):
-    with DB_Handler() as db:
-        for _ in range(LENGTH):
-            foo = Foo(uuid=str(uuid4()), name="unitest")
-            db.add(TEST_TABLE_NAME, foo)
-        db.save(dir + TEST_DB_NAME)
-
-    assert TEST_DB_NAME in os.listdir(dir)
-
-
-def test_handler_load(dir, db):
-    db.save(dir + TEST_DB_NAME)
-    with DB_Handler(dir + TEST_DB_NAME) as testdb:
-        for foo in testdb(TEST_TABLE_NAME):
-            assert issubclass(foo.__class__, BaseModel)
-            assert isinstance(foo, Foo)
-
-
-def test_handler_save_ExceptionDB_on_exception(dir, db):
-    db.save(dir + TEST_DB_NAME)
-    with pytest.raises(ValueError):
-        with DB_Handler(dir + TEST_DB_NAME) as _:
-            raise ValueError()
-    assert f"{TEST_DB_NAME[:-3]}_crash.db" in os.listdir(dir)
-
-
-def test_handler_save_multiple_ExceptionDB_on_exception(dir, db):
-    db.save(dir + TEST_DB_NAME)
-
-    with pytest.raises(KeyError):
-        with DB_Handler(dir + TEST_DB_NAME) as _:
-            raise KeyError()
-    assert f"{TEST_DB_NAME[:-3]}_crash.db" in os.listdir(dir)
-
-    with pytest.raises(DummyExeption):
-        with DB_Handler(dir + TEST_DB_NAME) as _:
-            raise DummyExeption()
-    assert f"{TEST_DB_NAME[:-3]}_crash(1).db" in os.listdir(dir)
+    for person in db(TEST_TABLE_NAME):
+        assert issubclass(person.__class__, BaseModel)
+        assert isinstance(person, Person)
 
 
 def test_persistent_db_save(persistent_db):
