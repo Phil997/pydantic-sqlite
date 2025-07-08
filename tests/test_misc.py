@@ -1,22 +1,14 @@
 import os
-
-import pytest
-from testfixtures import TempDirectory
+from pathlib import Path
 
 from pydantic_sqlite._misc import get_unique_filename
 
 
-@pytest.fixture()
-def dir():
-    with TempDirectory() as dir:
-        yield dir
+def test_uniquify(tmp_path: Path):
+    testfile = tmp_path / "file.txt"
 
+    for _ in range(3):
+        name = get_unique_filename(testfile)
+        tmp_path.joinpath(name).touch()
 
-def test_uniquify(dir):
-    testfile = dir.path + os.path.sep + "foo.txt"
-    examples = 10
-
-    for _ in range(examples):
-        dir.write(get_unique_filename(testfile), b'some foo thing')
-
-    assert len(set(os.listdir(dir.path))) == examples
+    assert set(os.listdir(tmp_path)) == set(('file.txt', 'file(1).txt', 'file(2).txt'))

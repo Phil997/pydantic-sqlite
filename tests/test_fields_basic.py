@@ -1,17 +1,17 @@
-import pytest
+from datetime import datetime
 from random import choice
 from typing import List, Optional
-from datetime import datetime
 from uuid import uuid4
 
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import BaseModel
 
 from pydantic_sqlite import DataBase
 
-from ._globals import (SQLITE_FLOAT_MAX, SQLITE_FLOAT_MIN, SQLITE_INTEGERS_MAX,
-                       SQLITE_INTEGERS_MIN)
+from ._helper import (SQLITE_FLOAT_MAX, SQLITE_FLOAT_MIN, SQLITE_INTEGERS_MAX,
+                      SQLITE_INTEGERS_MIN)
 
 settings.register_profile("pydantic-sqlite", deadline=500)
 settings.load_profile("pydantic-sqlite")

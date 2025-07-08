@@ -5,25 +5,7 @@ from pydantic import BaseModel, field_validator
 
 from pydantic_sqlite import DataBase
 
-
-class Foo(BaseModel):
-    uuid: str
-    name: str
-
-
-class Bar(BaseModel):
-    uuid: str
-    foo: Foo
-
-
-class Baz(BaseModel):
-    uuid: str
-    bar: Bar
-
-
-class FooList(BaseModel):
-    uuid: str
-    testcase: List[Foo]
+from ._helper import Baz, Employee, Person, Team
 
 
 class Hello(BaseModel):
@@ -64,59 +46,59 @@ class Example3(BaseModel):
 
 def test_nested_BaseModels_Level_0():
     db = DataBase()
-    foo = Foo(uuid=str(uuid4()), name="unitest")
+    person = Person(uuid=str(uuid4()), name="unitest")
 
-    db.add('Foo', foo)
-    assert db.value_in_table('Foo', foo)
+    db.add('Person', person)
+    assert db.value_in_table('Person', person)
 
 
 def test_nested_BaseModels_Level_1():
     db = DataBase()
-    foo = Foo(uuid=str(uuid4()), name="unitest")
-    bar = Bar(uuid=str(uuid4()), foo=foo)
+    person = Person(uuid=str(uuid4()), name="unitest")
+    employee = Employee(uuid=str(uuid4()), person=person)
 
-    db.add('Foo', foo)
-    assert db.value_in_table('Foo', foo)
+    db.add('Person', person)
+    assert db.value_in_table('Person', person)
 
-    db.add('Bar', bar, foreign_tables={"foo": "Foo"})
-    assert db.value_in_table('Bar', bar)
-    assert isinstance(bar.foo, Foo)
+    db.add('Employee', employee, foreign_tables={"person": "Person"})
+    assert db.value_in_table('Employee', employee)
+    assert isinstance(employee.person, Person)
 
 
 def test_nested_BaseModels_Level_2():
     db = DataBase()
-    foo = Foo(uuid=str(uuid4()), name="unitest")
-    bar = Bar(uuid=str(uuid4()), foo=foo)
-    baz = Baz(uuid=str(uuid4()), bar=bar)
+    person = Person(uuid=str(uuid4()), name="unitest")
+    employee = Employee(uuid=str(uuid4()), person=person)
+    team = Baz(uuid=str(uuid4()), employee=employee)
 
-    db.add('Foo', foo)
-    assert db.value_in_table('Foo', foo)
+    db.add('Person', person)
+    assert db.value_in_table('Person', person)
 
-    db.add('Bar', bar, foreign_tables={"foo": "Foo"})
-    assert db.value_in_table('Bar', bar)
-    assert isinstance(bar.foo, Foo)
-    assert bar.foo.name == "unitest"
+    db.add('Employee', employee, foreign_tables={"person": "Person"})
+    assert db.value_in_table('Employee', employee)
+    assert isinstance(employee.person, Person)
+    assert employee.person.name == "unitest"
 
-    db.add('Baz', baz, foreign_tables={"bar": "Bar"})
-    assert db.value_in_table('Baz', baz)
-    assert isinstance(baz.bar, Bar)
-    assert isinstance(baz.bar.foo, Foo)
-    assert baz.bar.foo.name == "unitest"
+    db.add('Baz', team, foreign_tables={"employee": "Employee"})
+    assert db.value_in_table('Baz', team)
+    assert isinstance(team.employee, Employee)
+    assert isinstance(team.employee.person, Person)
+    assert team.employee.person.name == "unitest"
 
 
 def test_nested_BaseModels_in_Typing_List():
     db = DataBase()
 
-    foo1 = Foo(uuid=str(uuid4()), name="unitest")
-    foo2 = Foo(uuid=str(uuid4()), name="unitest")
-    ex = FooList(uuid=str(uuid4()), testcase=[foo1, foo2])
+    foo1 = Person(uuid=str(uuid4()), name="unitest")
+    foo2 = Person(uuid=str(uuid4()), name="unitest")
+    ex = Team(uuid=str(uuid4()), testcase=[foo1, foo2])
 
-    db.add('Foo', foo1)
-    db.add('Foo', foo2)
-    db.add('FooList', ex, foreign_tables={'testcase': 'Foo'})
+    db.add('Person', foo1)
+    db.add('Person', foo2)
+    db.add('Team', ex, foreign_tables={'testcase': 'Person'})
 
-    assert db.value_in_table('FooList', ex)
-    assert [foo1, foo2] == db.value_from_table('FooList', ex.uuid).testcase
+    assert db.value_in_table('Team', ex)
+    assert [foo1, foo2] == db.value_from_table('Team', ex.uuid).testcase
 
 
 def test_skip_nested():
@@ -131,39 +113,39 @@ def test_skip_nested():
 
 def test_skip_nested_in_List():
     db = DataBase()
-    foo = Hello(name="foo")
-    bar = Hello(name="bar")
-    ex = Example3(uuid=str(uuid4()), data=[foo, bar])
+    person = Hello(name="person")
+    employee = Hello(name="employee")
+    ex = Example3(uuid=str(uuid4()), data=[person, employee])
 
     db.add('Example', ex)
     assert db.value_in_table('Example', ex)
     ex_res = db.value_from_table('Example', ex.uuid)
-    assert ex_res.data == [foo, bar]
+    assert ex_res.data == [person, employee]
 
 
 def test_update_the_nested_model():
     db = DataBase()
-    foo = Foo(uuid=str(uuid4()), name="unitest")
-    bar = Bar(uuid=str(uuid4()), foo=foo)
+    person = Person(uuid=str(uuid4()), name="unitest")
+    employee = Employee(uuid=str(uuid4()), person=person)
 
-    db.add('Foo', foo)
-    db.add('Bar', bar, foreign_tables={"foo": "Foo"})
+    db.add('Person', person)
+    db.add('Employee', employee, foreign_tables={"person": "Person"})
 
-    bar.foo.name = "new_value"
-    db.add('Bar', bar, foreign_tables={"foo": "Foo"})
+    employee.person.name = "new_value"
+    db.add('Employee', employee, foreign_tables={"person": "Person"})
 
-    assert db.value_from_table('Bar', bar.uuid).foo.name == "new_value"
+    assert db.value_from_table('Employee', employee.uuid).person.name == "new_value"
 
 
 def test_update_the_nested_model_indirect():
     db = DataBase()
-    foo = Foo(uuid=str(uuid4()), name="unitest")
-    bar = Bar(uuid=str(uuid4()), foo=foo)
+    person = Person(uuid=str(uuid4()), name="unitest")
+    employee = Employee(uuid=str(uuid4()), person=person)
 
-    db.add('Foo', foo)
-    db.add('Bar', bar, foreign_tables={"foo": "Foo"})
+    db.add('Person', person)
+    db.add('Employee', employee, foreign_tables={"person": "Person"})
 
-    foo.name = "new_value"
-    db.add('Foo', foo)
+    person.name = "new_value"
+    db.add('Person', person)
 
-    assert db.value_from_table('Bar', bar.uuid).foo.name == "new_value"
+    assert db.value_from_table('Employee', employee.uuid).person.name == "new_value"
