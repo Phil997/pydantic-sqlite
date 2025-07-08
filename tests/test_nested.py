@@ -44,7 +44,7 @@ class Example3(BaseModel):
         return list(inner())
 
 
-def test_nested_BaseModels_Level_0():
+def test_nested_basemodels_level_0():
     db = DataBase()
     person = Person(uuid=str(uuid4()), name="unitest")
 
@@ -52,7 +52,7 @@ def test_nested_BaseModels_Level_0():
     assert db.value_in_table('Person', person)
 
 
-def test_nested_BaseModels_Level_1():
+def test_nested_basemodels_level_1():
     db = DataBase()
     person = Person(uuid=str(uuid4()), name="unitest")
     employee = Employee(uuid=str(uuid4()), person=person)
@@ -65,7 +65,7 @@ def test_nested_BaseModels_Level_1():
     assert isinstance(employee.person, Person)
 
 
-def test_nested_BaseModels_Level_2():
+def test_nested_basemodels_level_2():
     db = DataBase()
     person = Person(uuid=str(uuid4()), name="unitest")
     employee = Employee(uuid=str(uuid4()), person=person)
@@ -86,7 +86,7 @@ def test_nested_BaseModels_Level_2():
     assert team.employee.person.name == "unitest"
 
 
-def test_nested_BaseModels_in_Typing_List():
+def test_nested_basemodels_in_typing_list():
     db = DataBase()
 
     foo1 = Person(uuid=str(uuid4()), name="unitest")
@@ -111,7 +111,7 @@ def test_skip_nested():
     db.value_from_table('Worlds', world.uuid)
 
 
-def test_skip_nested_in_List():
+def test_skip_nested_in_list():
     db = DataBase()
     person = Hello(name="person")
     employee = Hello(name="employee")
