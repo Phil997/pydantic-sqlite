@@ -30,7 +30,7 @@ def convert_value_into_union_types(union_type: Any, value: Any) -> Any:
         value (Any): The value to convert.
 
     Returns:
-        Any: The value converted to the first matching type in the Union, or the original value if no conversion succeeds.
+        Any: The value converted to the first matching type in the Union.
     """
     if type(None) in get_args(union_type) and value is None:
         return None
