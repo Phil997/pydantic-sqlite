@@ -4,9 +4,9 @@
 ![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)
 
 
-A lightweight package for storing Pydantic BaseModels in an in-memory or file-based SQLite database.
+A lightweight package for storing `pydantic` `BaseModel` in a `SQLite` database.
 
-You can store any BaseModel instance directly in the database, and when querying a table, you receive fully reconstructed BaseModel objects — ready to use, just like your originals.
+You can store any `BaseModel` instance directly in the database, and when querying a table, you receive fully reconstructed `BaseModel` objects — ready to use, just like your originals.
 
 - [Installation](#installation)
 - [Usage](#usage)
@@ -29,7 +29,6 @@ Create two instances of the class `Person` and store them in the 'Test' table of
 ```python
 from pydantic_sqlite import DataBase
 from pydantic import BaseModel
-from uuid import uuid4
 
 class Person(BaseModel):
     uuid: str
@@ -37,20 +36,19 @@ class Person(BaseModel):
     age: int
 
 # Create two Person instances
-person1 = Person(uuid=str(uuid4()), name="Bob", age=12)
-person2 = Person(uuid=str(uuid4()), name="Alice", age=28)
+person1 = Person(uuid="abc", name="Yoda", age=900)
+person2 = Person(uuid="def", name="Leia", age=23)
 
 db = DataBase()
 db.add("Test", person1)
 db.add("Test", person2)
 
 for x in db("Test"):
-    assert issubclass(x.__class__, BaseModel)
     assert isinstance(x, Person)
     print(x)
 
-#>>> uuid='...' name='Bob' age=12
-#>>> uuid='...' name='Alice' age=28
+#>>> uuid='abc' name='Yoda' age=900
+#>>> uuid='def' name='Leia' age=23
 ```
 
 ### Nested Example
@@ -60,7 +58,6 @@ Instantiate an address object and two person objects, with each person having an
 ```python
 from pydantic_sqlite import DataBase
 from pydantic import BaseModel
-from uuid import uuid4
 
 class Address(BaseModel):
     uuid: str
@@ -73,28 +70,23 @@ class Person(BaseModel):
     name: str
     address: Address
 
-address = Address(uuid=str(uuid4()), town="Berlin", street="Bahnhofstraße", number=67)
-person1 = Person(uuid=str(uuid4()), name="Bob", address=address)
-person2 = Person(uuid=str(uuid4()), name="Alice", address=address)
+address = Address(uuid="abc", town="Mos Espa", street="Dustwind Street", number=67)
+person1 = Person(uuid="def", name="Anakin", address=address)
 
 db = DataBase()
 db.add("Adresses", address)
 db.add("Persons", person1, foreign_tables={'address': 'Adresses'})
-db.add("Persons", person2, foreign_tables={'address': 'Adresses'})
 
 for x in db("Adresses"):
-    assert issubclass(x.__class__, BaseModel)
     assert isinstance(x, Address)
     print(x)
 
 for y in db("Persons"):
-    assert issubclass(y.__class__, BaseModel)
     assert isinstance(y, Person)
     print(y)
 
-#>>> uuid='...' town='Berlin' street='Bahnhofstraße' number=67
-#>>> uuid='...' name='Bob' address=Address(...)
-#>>> uuid='...' name='Alice' address=Address(...)
+#>>> uuid='abc' town='Mos Espa' street='Dustwind Street' number=67
+#>>> uuid='def' name='Anakin' address=Address(uuid='abc', town='Berlin', street='Dustwind Street', number=67)
 ```
 
 ### Nested Example without Foreign Table
@@ -138,7 +130,6 @@ db.add("Persons", person1)
 db.add("Persons", person2)
 
 for y in db("Persons"):
-    assert issubclass(y.__class__, BaseModel)
     assert isinstance(y, Person)
     print(y)
 
@@ -146,7 +137,6 @@ for y in db("Persons"):
 #>>> uuid='...' name='Alice' address=Address(town='Berlin', street='Bahnhofstraße 67')
 
 for y in db("Persons", where='name= :name', where_args={'name': 'Alice'}):
-    assert issubclass(y.__class__, BaseModel)
     assert isinstance(y, Person)
     print(y)
 #>>> uuid='...' name='Alice' address=Address(town='Berlin', street='Bahnhofstraße 67')
