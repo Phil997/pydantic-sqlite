@@ -103,7 +103,7 @@ class DataBase:
             basemodel = self._basemodels[tablename]
             foreign_refs = {key.column: key.other_table for key in self._db[tablename].foreign_keys}
         except KeyError:
-            raise KeyError(f"can not find Table: {tablename} in Database") from None
+            raise KeyError(f"Can't find table '{tablename}' in Database") from None
 
         for row in self._db[tablename].rows_where(**kwargs):
             yield self._build_basemodel_from_dict(basemodel, row, foreign_refs)
@@ -139,15 +139,15 @@ class DataBase:
         """
         # unkown Tablename -> means new Table -> update the table_basemodel_ref list
         if tablename not in self._basemodels:
-            self._basemodels_add_model(
-                table=tablename, basemodel_cls=type(value), pks=[pk]
-            )
+            if not isinstance(value, BaseModel):
+                raise TypeError("Only pydantic BaseModels can be added to the database")
+            self._basemodels_add_model(table=tablename, basemodel_cls=type(value), pks=[pk])
 
         # check whether the value matches the basemodels in the table
         if not isinstance(value, BaseModel):
-            msg = f"Can not add type '{type(value)}' to the table '{tablename}',"
-            msg += f" which contains values of type '{self._basemodels[tablename].basemodel_cls}'"
-            raise ValueError(msg)
+            _table_type = self._basemodels[tablename].basemodel_cls.__name__
+            msg = f"Only pydantic BaseModels of type '{_table_type}' can be added to the table '{tablename}'"
+            raise TypeError(msg)
 
         # create dict for writing to the Table
         data_for_save = (
