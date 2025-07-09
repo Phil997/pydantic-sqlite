@@ -224,54 +224,39 @@ class DataBase:
             raise KeyError(msg)
         return foreign_table_name
 
-    def uuid_in_table(self, tablename: str, uuid: str) -> bool:
+    def value_in_table(self, tablename: str, pk_value: Union[str, BaseModel], pk: str = "uuid") -> bool:
         """
-        Checks if the given uuid is used as a primary key in the table.
+        Checks if the given value is in the table.
+        The value can either be an instance of the BaseModel or the primary_key value itself.
+        If it is a BaseModel instance, the primary key will be extracted using `getattr` with the specified `pk`.
 
         Args:
-            tablename (str): The name of the table.
-            uuid (str): The uuid to check.
+            tablename (str): Name of the table to search in.
+            pk_value (str | BaseModel): The value of the primary key to look for,
+              or a BaseModel instance (the key will be extracted with getattr with pk).
+            pk (str, optional): The primary key field name. Defaults to "uuid".
 
         Returns:
-            bool: True if the uuid exists in the table, False otherwise.
+            bool: True if a row with the given primary key exists, otherwise False.
         """
-        hits = [row for row in self._db[tablename].rows_where("uuid = ?", [uuid])]
-        if len(hits) > 1:
-            raise Exception(
-                "uuid is two times in table"
-            )  # TODO choice correct exceptiontype
-        return False if not hits else True
+        if isinstance(pk_value, BaseModel):
+            pk_value = getattr(pk_value, pk)
+        entries = [row for row in self._db[tablename].rows_where(f"{pk} = ?", [pk_value])]
+        return bool(entries)
 
-    def value_in_table(self, tablename: str, value: BaseModel) -> bool:
+    def value_from_table(self, tablename: str, pk_value: str, pk: str = "uuid") -> typing.Any:
         """
-        Checks if the given value is in the table by uuid.
+        Retrieve a BaseModel instance from the table by primary key.
 
         Args:
-            tablename (str): The name of the table.
-            value (BaseModel): The value to check, as a Pydantic BaseModel instance.
+            tablename (str): Name of the table to search in.
+            pk_value (str): The value of the primary key to look for.
+            pk (str, optional): The primary key field name. Defaults to "uuid".
 
         Returns:
-            bool: True if the value exists in the table, False otherwise.
+            BaseModel | None: The found object as a BaseModel subclass, or None if not found.
         """
-        return self.uuid_in_table(tablename, value.uuid)
-
-    def value_from_table(self, tablename: str, uuid: str) -> typing.Any:
-        """
-        Searches for the object with the given uuid in the table and returns it as a subclass of pydantic.BaseModel.
-        Returns None if not found.
-
-        Args:
-            tablename (str): The name of the table.
-            uuid (str): The uuid of the object to retrieve.
-
-        Returns:
-            typing.Any: The found object as a BaseModel subclass, or None if not found.
-        """
-        hits = [row for row in self._db[tablename].rows_where("uuid = ?", [uuid])]
-        if len(hits) > 1:
-            raise Exception(
-                "uuid is two times in table"
-            )  # TODO choice correct exceptiontype
+        entries = [row for row in self._db[tablename].rows_where(f"{pk} = ?", [pk_value])]
 
         model = self._basemodels[tablename]
         foreign_refs = {
@@ -279,9 +264,9 @@ class DataBase:
         }
         return (
             None
-            if not hits
+            if not entries
             else self._build_basemodel_from_dict(
-                model, hits[0], foreign_refs=foreign_refs
+                model, entries[0], foreign_refs=foreign_refs
             )
         )
 
@@ -438,7 +423,7 @@ class DataBase:
 
         def add_nested_model(value):
             if (
-                not self.value_in_table(foreign_table_name, value)
+                not self.value_in_table(foreign_table_name, value.uuid)
                 or update_nested_models
             ):
                 self.add(foreign_table_name, value, foreign_tables=foreign_refs)

@@ -77,8 +77,8 @@ def test_save_and_check_is_in_table(values):
     test1 = Example(**values)
     db.add("Test", test1)
 
-    assert db.uuid_in_table('Test', test1.uuid)
     assert db.value_in_table('Test', test1)
+    assert db.value_in_table('Test', test1.uuid)
 
 
 @given(st.lists(example_values(), min_size=1))

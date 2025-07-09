@@ -30,3 +30,8 @@ class Baz(BaseModel):
 class Team(BaseModel):
     uuid: str
     testcase: List[Person]
+
+
+class Car(BaseModel):
+    series_number: str
+    model: str
