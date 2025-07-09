@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from unittest import mock
 from uuid import uuid4
 
@@ -12,8 +13,8 @@ from ._helper import LENGTH, TEST_DB_NAME, TEST_TABLE_NAME, Person
 
 
 @pytest.fixture()
-def persistent_db(dir):
-    db = DataBase(filename_or_conn=(dir + TEST_DB_NAME))
+def persistent_db(tmp_path: Path):
+    db = DataBase(filename_or_conn=str(tmp_path / TEST_DB_NAME))
     for _ in range(LENGTH):
         person = Person(uuid=str(uuid4()), name="unitest")
         db.add(TEST_TABLE_NAME, person)
@@ -21,66 +22,66 @@ def persistent_db(dir):
     return db
 
 
-def test_save_with_file_ending(dir, db):
-    db.save(dir + "hello.db")
-    assert "hello.db" in os.listdir(dir)
-    assert len(os.listdir(dir)) == 1, "detect more than one file in path"
+def test_save_with_file_ending(tmp_path: Path, sample_db: DataBase):
+    sample_db.save(str(tmp_path / "hello.db"))
+    assert "hello.db" in os.listdir(tmp_path)
+    assert len(os.listdir(tmp_path)) == 1
 
 
-def test_save_with_automatic_add_file_ending(dir, db):
-    db.save(dir + "hello")
-    assert "hello.db" in os.listdir(dir)
-    assert len(os.listdir(dir)) == 1, "detect more than one file in path"
+def test_save_with_automatic_add_file_ending(tmp_path: Path, sample_db: DataBase):
+    sample_db.save(str(tmp_path / "hello"))
+    assert "hello.db" in os.listdir(tmp_path)
+    assert len(os.listdir(tmp_path)) == 1
 
 
-def test_save_override_existing_db(dir, db):
-    db.save(dir + TEST_DB_NAME)
-    assert TEST_DB_NAME in os.listdir(dir)
+def test_save_override_existing_db(tmp_path: Path, sample_db: DataBase):
+    sample_db.save(str(tmp_path / TEST_DB_NAME))
+    assert TEST_DB_NAME in os.listdir(tmp_path)
 
     for _ in range(LENGTH):
         person = Person(uuid=str(uuid4()), name="unitest")
-        db.add("Foo2", person)
-    assert len(db._db.table_names()) == 3
+        sample_db.add("Foo2", person)
+    assert len(sample_db._db.table_names()) == 3
 
-    db.save(dir + TEST_DB_NAME)
-    assert TEST_DB_NAME in os.listdir(dir)
-    assert len(os.listdir(dir)) == 1, "detect more than one file in path"
+    sample_db.save(str(tmp_path / TEST_DB_NAME))
+    assert TEST_DB_NAME in os.listdir(tmp_path)
+    assert len(os.listdir(tmp_path)) == 1
 
 
-def test_backup_file_on_existing_file(dir, db):
+def test_backup_file_on_existing_file(tmp_path: Path, sample_db: DataBase):
     with TempDirectory() as d1:
-        with mock.patch("pydantic_sqlite._core.tempfile.mkdtemp", lambda: d1.path) as _:
-            db.save(dir + TEST_DB_NAME)
-        assert TEST_DB_NAME in os.listdir(dir)
+        with mock.patch("pydantic_sqlite._core.tempfile.mkdtemp", lambda: d1.path):
+            sample_db.save(str(tmp_path / TEST_DB_NAME))
+        assert TEST_DB_NAME in os.listdir(tmp_path)
         assert TEST_DB_NAME in os.listdir(d1.path)
         assert "_backup.db" not in os.listdir(d1.path)
 
     with TempDirectory() as d2:
-        with mock.patch("pydantic_sqlite._core.tempfile.mkdtemp", lambda: d2.path) as _:
-            db.save(dir + TEST_DB_NAME)
+        with mock.patch("pydantic_sqlite._core.tempfile.mkdtemp", lambda: d2.path):
+            sample_db.save(str(tmp_path / TEST_DB_NAME))
 
-        assert TEST_DB_NAME in os.listdir(dir)
+        assert TEST_DB_NAME in os.listdir(tmp_path)
         assert TEST_DB_NAME in os.listdir(d2.path)
         assert "_backup.db" in os.listdir(d2.path)
 
 
-def test_load_raise_Exception_not_existing(dir, db):
+def test_load_raise_exception_not_existing(tmp_path: Path, sample_db: DataBase):
     with pytest.raises(FileNotFoundError):
-        db.load(dir + TEST_DB_NAME)
+        sample_db.load(str(tmp_path / TEST_DB_NAME))
 
 
-def test_save_and_load(dir, db):
-    db.save(dir + TEST_DB_NAME)
-    assert TEST_DB_NAME in os.listdir(dir)
-    assert len(os.listdir(dir)) == 1, "detect more than one file in path"
+def test_save_and_load(tmp_path: Path, sample_db: DataBase):
+    sample_db.save(str(tmp_path / TEST_DB_NAME))
+    assert TEST_DB_NAME in os.listdir(tmp_path)
+    assert len(os.listdir(tmp_path)) == 1
 
-    db = DataBase()
-    db.load(dir + TEST_DB_NAME)
-    assert len(db._db.table_names()) == 2
-    assert len(list(db(TEST_TABLE_NAME))) == LENGTH
+    db2 = DataBase()
+    db2.load(str(tmp_path / TEST_DB_NAME))
+    assert len(db2._db.table_names()) == 2
+    assert len(list(db2(TEST_TABLE_NAME))) == LENGTH
 
-    for person in db(TEST_TABLE_NAME):
-        assert issubclass(person.__class__, BaseModel)
+    for person in db2(TEST_TABLE_NAME):
+        assert isinstance(person, BaseModel)
         assert isinstance(person, Person)
 
 

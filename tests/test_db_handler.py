@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -24,33 +25,31 @@ def test_context_manager():
                 ...  # re-entering the context manager should raise an error
 
 
-def test_save_DataBase(dir: str):
-    with DB_Handler("mytest", snapshot_suffix="_snapshot.db") as db:
+def test_save_DataBase(tmp_path: Path):
+    with DB_Handler(str(tmp_path / "mytest"), snapshot_suffix="_snapshot.db") as db:
         for _ in range(LENGTH):
             person = Person(uuid=str(uuid4()), name="unitest")
             db.add(TEST_TABLE_NAME, person)
-        db.save(dir + TEST_DB_NAME)
+        db.save(str(tmp_path / TEST_DB_NAME))
 
-    assert TEST_DB_NAME in os.listdir(dir)
+    assert TEST_DB_NAME in os.listdir(tmp_path)
 
 
-def test_load(dir: str, db: DataBase):
-    db.save(dir + TEST_DB_NAME)
-    with DB_Handler(dbname=dir + TEST_DB_NAME, snapshot_suffix="_snapshot.db") as testdb:
+def test_load(tmp_path: Path, sample_db: DataBase):
+    sample_db.save(str(tmp_path / TEST_DB_NAME))
+    with DB_Handler(dbname=str(tmp_path / TEST_DB_NAME), snapshot_suffix="_snapshot.db") as testdb:
         for person in testdb(TEST_TABLE_NAME):
             assert issubclass(person.__class__, BaseModel)
             assert isinstance(person, Person)
 
 
-def test_save_snapshot_on_exception(dir: str, db: DataBase):
-    db.save(dir + TEST_DB_NAME)
-
+def test_save_snapshot_on_exception(tmp_path: Path, sample_db: DataBase):
+    sample_db.save(str(tmp_path / TEST_DB_NAME))
     with pytest.raises(KeyError):
-        with DB_Handler(dir + TEST_DB_NAME, snapshot_suffix="_snapshot.db") as _:
+        with DB_Handler(str(tmp_path / TEST_DB_NAME), snapshot_suffix="_snapshot.db") as _:
             raise KeyError()
-    assert f"{TEST_DB_NAME[:-3]}_snapshot.db" in os.listdir(dir)
-
+    assert f"{TEST_DB_NAME[:-3]}_snapshot.db" in os.listdir(tmp_path)
     with pytest.raises(DummyExeption):
-        with DB_Handler(dir + TEST_DB_NAME, snapshot_suffix="_snapshot.db") as _:
+        with DB_Handler(str(tmp_path / TEST_DB_NAME), snapshot_suffix="_snapshot.db") as _:
             raise DummyExeption()
-    assert f"{TEST_DB_NAME[:-3]}_snapshot(1).db" in os.listdir(dir)
+    assert f"{TEST_DB_NAME[:-3]}_snapshot(1).db" in os.listdir(tmp_path)
