@@ -2,7 +2,7 @@ import pytest
 
 from pydantic_sqlite import DataBase
 
-from ._helper import Car, Employee, Person
+from ._helper import Address, Car, Employee, Person
 
 
 def test_add_3_items(sample_db: DataBase):
@@ -24,27 +24,28 @@ def test_value_in_table_with_alternative_pk(sample_db: DataBase):
     assert sample_db.value_in_table('Cars', car.series_number, pk='series_number') is True
 
 
-def test_exception_unkwon_table(sample_db: DataBase):
-
+def test_exception_unkwon_table():
     with pytest.raises(KeyError, match="Can't find table 'UnknownTable' in Database"):
-        for _ in sample_db("UnknownTable"):
+        for _ in DataBase()("UnknownTable"):
             ...
 
 
-def test_exception_wrong_type(sample_db: DataBase):
+def test_exception_wrong_type():
+    db = DataBase()
     person = Person(uuid="abc", name="unitest")
+    address = Address(uuid="lkj", street="Main St", city="Springfield", zip_code="12345")
 
     with pytest.raises(
             TypeError,
             match="Only pydantic BaseModels can be added to the database"):
-        sample_db.add("MyTable", 1)
+        db.add("MyTable", 1)
 
-    sample_db.add("MyTable", person)
+    db.add("MyTable", person)
 
     with pytest.raises(
             TypeError,
             match="Only pydantic BaseModels of type 'Person' can be added to the table 'MyTable'"):
-        sample_db.add("MyTable", "string")
+        db.add("MyTable", address)
 
 
 def test_get_check_foreign_table_name_success(sample_db: DataBase):

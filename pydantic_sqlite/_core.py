@@ -119,7 +119,7 @@ class DataBase:
         else:
             return db_filename
 
-    def add(
+    def add(  # noqa: C901
         self,
         tablename: str,
         value: BaseModel,
@@ -138,13 +138,13 @@ class DataBase:
             pk (str, optional): The primary key field name. Defaults to "uuid".
         """
         # unkown Tablename -> means new Table -> update the table_basemodel_ref list
+        if not isinstance(value, BaseModel):
+            raise TypeError("Only pydantic BaseModels can be added to the database")
+
         if tablename not in self._basemodels:
-            if not isinstance(value, BaseModel):
-                raise TypeError("Only pydantic BaseModels can be added to the database")
             self._basemodels_add_model(table=tablename, basemodel_cls=type(value), pks=[pk])
 
-        # check whether the value matches the basemodels in the table
-        if not isinstance(value, BaseModel):
+        if not isinstance(value, self._basemodels[tablename].basemodel_cls):
             _table_type = self._basemodels[tablename].basemodel_cls.__name__
             msg = f"Only pydantic BaseModels of type '{_table_type}' can be added to the table '{tablename}'"
             raise TypeError(msg)

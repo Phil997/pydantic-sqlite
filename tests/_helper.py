@@ -32,6 +32,13 @@ class Team(BaseModel):
     testcase: List[Person]
 
 
+class Address(BaseModel):
+    uuid: str
+    street: str
+    city: str
+    zip_code: str
+
+
 class Car(BaseModel):
     series_number: str
     model: str
