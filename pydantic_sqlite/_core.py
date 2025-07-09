@@ -101,9 +101,7 @@ class DataBase:
         """
         try:
             basemodel = self._basemodels[tablename]
-            foreign_refs = {
-                key.column: key.other_table for key in self._db[tablename].foreign_keys
-            }
+            foreign_refs = {key.column: key.other_table for key in self._db[tablename].foreign_keys}
         except KeyError:
             raise KeyError(f"can not find Table: {tablename} in Database") from None
 
@@ -162,9 +160,7 @@ class DataBase:
         for field_name, field_info in value.model_fields.items():
             field_value = getattr(value, field_name)
 
-            if res := self._special_conversion(
-                field_value
-            ):  # Special Insert with SQConfig.convert
+            if res := self._special_conversion(field_value):  # Special Insert with SQConfig.convert
                 data_for_save[field_name] = res
 
             elif field_info.annotation == Any or get_origin(field_info.annotation) is Union:
@@ -177,9 +173,7 @@ class DataBase:
                 obj = typing.get_args(field_info.annotation)[0]
                 if inspect.isclass(obj) and issubclass(obj, BaseModel):
                     data_for_save[field_name] = [x.uuid for x in field_value]
-                    foreign_table_name = self.get_check_foreign_table_name(
-                        field_name, foreign_tables
-                    )
+                    foreign_table_name = self._get_foreign_table_name(field_name, foreign_tables)
                     foreign_keys.append((field_name, foreign_table_name, pk))
                 else:
                     data_for_save[field_name] = [str(x) for x in field_value]
@@ -188,20 +182,20 @@ class DataBase:
                 # the value has got a field which is of type BaseModel, so this filed must be in a foreign table
                 # if the field is already in the Table it continues, but if is it not in the table it will add this
                 # to the table recursive call to self.add
-                foreign_table_name = self.get_check_foreign_table_name(
-                    field_name, foreign_tables
-                )
+                foreign_table_name = self._get_foreign_table_name(field_name, foreign_tables)
                 nested_obj_ids = self._upsert_value_in_foreign_table(
-                    field_value, foreign_table_name, update_nested_models
-                )
+                    field_value,
+                    foreign_table_name,
+                    update_nested_models)
                 data_for_save[field_name] = nested_obj_ids
                 foreign_keys.append((field_name, foreign_table_name, pk))  # ignore=True
 
         self._db[tablename].upsert(data_for_save, pk=pk, foreign_keys=foreign_keys)
 
-    def get_check_foreign_table_name(self, field_name: str, foreign_tables: dict) -> str:
+    def _get_foreign_table_name(self, field_name: str, foreign_tables: dict) -> str:
         """
-        Checks and returns the foreign table name for a given field.
+        Searches in the dict 'foreign_tables' for the field_name and returns the matching tablename.
+        If it is not found, raises KeyError.
 
         Args:
             field_name (str): The name of the field.
@@ -259,16 +253,12 @@ class DataBase:
         entries = [row for row in self._db[tablename].rows_where(f"{pk} = ?", [pk_value])]
 
         model = self._basemodels[tablename]
-        foreign_refs = {
-            key.column: key.other_table for key in self._db[tablename].foreign_keys
-        }
-        return (
-            None
-            if not entries
-            else self._build_basemodel_from_dict(
-                model, entries[0], foreign_refs=foreign_refs
-            )
-        )
+        foreign_refs = {key.column: key.other_table for key in self._db[tablename].foreign_keys}
+
+        if not entries:
+            return None
+        else:
+            return self._build_basemodel_from_dict(model, entries[0], foreign_refs=foreign_refs)
 
     def values_in_table(self, tablename: str) -> int:
         """
@@ -316,9 +306,7 @@ class DataBase:
             filename (str): The path to the file where the database should be saved.
         """
         if self.filename != ":memory:":
-            logging.warning(
-                f"database is persistent, already stored in a file: {self.filename}"
-            )
+            logging.warning(f"database is persistent, already stored in a file: {self.filename}")
             return
 
         if not filename.endswith(".db"):
@@ -375,9 +363,7 @@ class DataBase:
         for field_name, field_value in row.items():
             info = field_models[field_name]
 
-            if (
-                field_name in foreign_refs.keys()
-            ):  # the column contains another subclass of BaseModel
+            if (field_name in foreign_refs.keys()):  # the column contains another subclass of BaseModel
                 if get_origin(info.annotation) == list:
                     data = [
                         self.value_from_table(foreign_refs[field_name], val)
@@ -459,12 +445,8 @@ class DataBase:
 
             if not special_possible(obj_class := field_value[0].__class__):
                 return False
-            if not all(
-                isinstance(value, type(field_value[0])) for value in field_value
-            ):
-                raise ValueError(
-                    f"not all values in the List are from the same type: '{field_value}'"
-                )
+            if not all(isinstance(value, type(field_value[0])) for value in field_value):
+                raise ValueError(f"not all values in the List are from the same type: '{field_value}'")
             return [obj_class.SQConfig.convert(value) for value in field_value]
         else:
             if not special_possible(obj_class := field_value.__class__):
