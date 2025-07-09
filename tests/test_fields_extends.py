@@ -39,7 +39,7 @@ def example_values(draw):
 
 
 @given(example_values())
-def test_save_and_get_while_iteration(values):
+def test_save_and_get_while_iteration(values: dict):
     db = DataBase()
     test1 = Example(**values)
     db.add("Test", test1)
@@ -50,7 +50,7 @@ def test_save_and_get_while_iteration(values):
 
 
 @given(example_values())
-def test_save_and_get_from_table(values):
+def test_save_and_get_from_table(values: dict):
     db = DataBase()
     test1 = Example(**values)
     db.add("Test", test1)
@@ -61,7 +61,7 @@ def test_save_and_get_from_table(values):
 
 
 @given(example_values())
-def test_save_and_check_is_in_table(values):
+def test_save_and_check_is_in_table(values: dict):
     db = DataBase()
     test1 = Example(**values)
     db.add("Test", test1)
@@ -71,7 +71,7 @@ def test_save_and_check_is_in_table(values):
 
 
 @given(st.lists(example_values(), min_size=1))
-def test_save_and_get_while_iteration_multiple(values):
+def test_save_and_get_while_iteration_multiple(values: dict):
     db = DataBase()
     examples = [Example(**vls) for vls in values]
     for ex in examples:
@@ -85,7 +85,7 @@ def test_save_and_get_while_iteration_multiple(values):
 
 
 @given(st.lists(example_values(), min_size=1))
-def test_save_and_get_from_table_multiple(values):
+def test_save_and_get_from_table_multiple(values: dict):
     db = DataBase()
     examples = [Example(**vls) for vls in values]
     for ex in examples:
