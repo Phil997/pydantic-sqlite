@@ -90,7 +90,7 @@ class DataBase:
 
     def __call__(self, tablename: str, **kwargs) -> Generator[BaseModel, None, None]:
         """
-        Returns a generator for all values in the table as subclasses of `pydantic.BaseModel`.
+        Yields every model in the table. They can be filterd by passing **kwargs.
 
         Args:
             tablename (str): Name of the table.
@@ -122,43 +122,43 @@ class DataBase:
     def add(  # noqa: C901
         self,
         tablename: str,
-        value: BaseModel,
+        model: BaseModel,
         foreign_tables: dict = dict(),
         update_nested_models: bool = True,
         pk: str = "uuid",
     ) -> None:
         """
-        Adds a new value to the specified table. Handles nested models and foreign keys.
+        Adds a new model to the specified table. Handles nested models and foreign keys.
 
         Args:
             tablename (str): The name of the table.
-            value (BaseModel): The value to be added, as a Pydantic BaseModel instance.
+            model (BaseModel): The model to be added, as a Pydantic BaseModel instance.
             foreign_tables (dict, optional): A dictionary of foreign tables and their mappings.
             update_nested_models (bool, optional): Whether to update nested models if they already exist.
             pk (str, optional): The primary key field name. Defaults to "uuid".
         """
         # unkown Tablename -> means new Table -> update the table_basemodel_ref list
-        if not isinstance(value, BaseModel):
+        if not isinstance(model, BaseModel):
             raise TypeError("Only pydantic BaseModels can be added to the database")
 
         if tablename not in self._basemodels:
-            self._basemodels_add_model(table=tablename, basemodel_cls=type(value), pks=[pk])
+            self._basemodels_add_model(table=tablename, basemodel_cls=type(model), pks=[pk])
 
-        if not isinstance(value, self._basemodels[tablename].basemodel_cls):
+        if not isinstance(model, self._basemodels[tablename].basemodel_cls):
             _table_type = self._basemodels[tablename].basemodel_cls.__name__
             msg = f"Only pydantic BaseModels of type '{_table_type}' can be added to the table '{tablename}'"
             raise TypeError(msg)
 
         # create dict for writing to the Table
         data_for_save = (
-            value.model_dump()
-            if not hasattr(value, "sqlite_repr")
-            else value.sqlite_repr
+            model.model_dump()
+            if not hasattr(model, "sqlite_repr")
+            else model.sqlite_repr
         )
 
         foreign_keys = []
-        for field_name, field_info in value.model_fields.items():
-            field_value = getattr(value, field_name)
+        for field_name, field_info in model.model_fields.items():
+            field_value = getattr(model, field_name)
 
             if res := self._special_conversion(field_value):  # Special Insert with SQConfig.convert
                 data_for_save[field_name] = res
@@ -179,11 +179,11 @@ class DataBase:
                     data_for_save[field_name] = [str(x) for x in field_value]
 
             elif inspect.isclass(field_info.annotation) and issubclass(field_info.annotation, BaseModel):
-                # the value has got a field which is of type BaseModel, so this filed must be in a foreign table
+                # the model has got a field which is of type BaseModel, so this filed must be in a foreign table
                 # if the field is already in the Table it continues, but if is it not in the table it will add this
                 # to the table recursive call to self.add
                 foreign_table_name = self._get_foreign_table_name(field_name, foreign_tables)
-                nested_obj_ids = self._upsert_value_in_foreign_table(
+                nested_obj_ids = self._upsert_model_in_foreign_table(
                     field_value,
                     foreign_table_name,
                     update_nested_models)
@@ -213,15 +213,15 @@ class DataBase:
             foreign_table_name = foreign_tables[field_name]
 
         if foreign_table_name not in self._db.table_names():
-            msg = f"Can not add a value, which has a foreign Key '{foreign_tables}'"
+            msg = f"Can not add a model, which has a foreign Key '{foreign_tables}'"
             msg += f" to a Table '{foreign_table_name}' which does not exists"
             raise KeyError(msg)
         return foreign_table_name
 
-    def value_in_table(self, tablename: str, pk_value: Union[str, BaseModel], pk: str = "uuid") -> bool:
+    def model_in_table(self, tablename: str, pk_value: Union[str, BaseModel], pk: str = "uuid") -> bool:
         """
-        Checks if the given value is in the table.
-        The value can either be an instance of the BaseModel or the primary_key value itself.
+        Checks if the given model is in the table.
+        The model can either be an instance of the BaseModel or the primary_key model itself.
         If it is a BaseModel instance, the primary key will be extracted using `getattr` with the specified `pk`.
 
         Args:
@@ -238,13 +238,13 @@ class DataBase:
         entries = [row for row in self._db[tablename].rows_where(f"{pk} = ?", [pk_value])]
         return bool(entries)
 
-    def value_from_table(self, tablename: str, pk_value: str, pk: str = "uuid") -> typing.Any:
+    def model_from_table(self, tablename: str, pk_value: str, pk: str = "uuid") -> typing.Any:
         """
         Retrieve a BaseModel instance from the table by primary key.
 
         Args:
             tablename (str): Name of the table to search in.
-            pk_value (str): The value of the primary key to look for.
+            pk_value (str): The model of the primary key to look for.
             pk (str, optional): The primary key field name. Defaults to "uuid".
 
         Returns:
@@ -260,15 +260,15 @@ class DataBase:
         else:
             return self._build_basemodel_from_dict(model, entries[0], foreign_refs=foreign_refs)
 
-    def values_in_table(self, tablename: str) -> int:
+    def models_in_table(self, tablename: str) -> int:
         """
-        Returns the number of values in the table.
+        Returns the number of models in the table.
 
         Args:
             tablename (str): The name of the table.
 
         Returns:
-            int: The number of values in the table.
+            int: The number of models in the table.
         """
         return self._db[tablename].count
 
@@ -299,7 +299,7 @@ class DataBase:
 
     def save(self, filename: str) -> None:
         """
-        Saves all values from the in-memory database to a file.
+        Saves all models from the in-memory database to a file.
         If the database is persistent, does nothing and returns None.
 
         Args:
@@ -366,11 +366,11 @@ class DataBase:
             if (field_name in foreign_refs.keys()):  # the column contains another subclass of BaseModel
                 if get_origin(info.annotation) == list:
                     data = [
-                        self.value_from_table(foreign_refs[field_name], val)
+                        self.model_from_table(foreign_refs[field_name], val)
                         for val in json.loads(field_value)
                     ]
                 else:
-                    data = self.value_from_table(foreign_refs[field_name], field_value)
+                    data = self.model_from_table(foreign_refs[field_name], field_value)
             else:
                 if get_origin(info.annotation) == list:
                     data = json.loads(field_value)
@@ -382,7 +382,7 @@ class DataBase:
             d.update({field_name: data})
         return tablemodel.basemodel_cls(**d)
 
-    def _upsert_value_in_foreign_table(
+    def _upsert_model_in_foreign_table(
         self, field_value: typing.Any, foreign_table_name: str, update_nested_models: bool
     ) -> Union[str, List[str]]:
         """
@@ -395,11 +395,11 @@ class DataBase:
             update_nested_models (bool): Whether to update nested models if they already exist.
 
         Returns:
-            Union[str, List[str]]: The uuid or list of uuids of the inserted/updated values.
+            Union[str, List[str]]: The uuid or list of uuids of the inserted/updated models.
         """
         # The nested BaseModel will be inserted or upserted to the foreign table if it is not contained there,
-        # or the update_nested_models parameter is True. If the value is Iterable (e.g. List) all values in the
-        # List will be be inserted or upserted. The function returns the ids of the values
+        # or the update_nested_models parameter is True. If the model is Iterable (e.g. List) all models in the
+        # List will be be inserted or upserted. The function returns the ids of the models
 
         # The foreign keys of this table are needed to add the nested basemodel object.
         foreign_refs = {
@@ -407,13 +407,13 @@ class DataBase:
             for key in self._db.table(foreign_table_name).foreign_keys
         }
 
-        def add_nested_model(value):
+        def add_nested_model(model):
             if (
-                not self.value_in_table(foreign_table_name, value.uuid)
+                not self.model_in_table(foreign_table_name, model.uuid)
                 or update_nested_models
             ):
-                self.add(foreign_table_name, value, foreign_tables=foreign_refs)
-            return value.uuid
+                self.add(foreign_table_name, model, foreign_tables=foreign_refs)
+            return model.uuid
 
         if not isinstance(field_value, List):
             return add_nested_model(field_value)
@@ -423,13 +423,13 @@ class DataBase:
     def _special_conversion(self, field_value: Any) -> Union[bool, Any]:
         """
         Handles special conversion for fields with SQConfig and custom convert methods.
-        Returns the converted value or False if not applicable.
+        Returns the converted model or False if not applicable.
 
         Args:
-            field_value (Any): The field value to convert.
+            field_value (Any): The field model to convert.
 
         Returns:
-            Union[bool, Any]: The converted value or False.
+            Union[bool, Any]: The converted model or False.
         """
         def special_possible(obj_class):
             try:
@@ -445,9 +445,9 @@ class DataBase:
 
             if not special_possible(obj_class := field_value[0].__class__):
                 return False
-            if not all(isinstance(value, type(field_value[0])) for value in field_value):
+            if not all(isinstance(model, type(field_value[0])) for model in field_value):
                 raise ValueError(f"not all values in the List are from the same type: '{field_value}'")
-            return [obj_class.SQConfig.convert(value) for value in field_value]
+            return [obj_class.SQConfig.convert(model) for model in field_value]
         else:
             if not special_possible(obj_class := field_value.__class__):
                 return False

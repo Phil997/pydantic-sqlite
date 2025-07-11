@@ -10,18 +10,18 @@ def test_add_3_items(sample_db: DataBase):
     sample_db.add("Humans", Person(uuid="5678", name="Darth Vader"), pk='uuid')
     sample_db.add("Humans", Person(uuid="abcd", name="Yoda"), pk='uuid')
 
-    print(sample_db.values_in_table("Humans"))
+    assert sample_db.models_in_table("Humans") == 3
 
 
-def test_value_in_table_with_alternative_pk(sample_db: DataBase):
+def test_model_in_table_with_alternative_pk(sample_db: DataBase):
     car = Car(series_number="1234", model="Volkswagen Golf")
     sample_db.add("Cars", car, pk='series_number')
 
     lst = [c for c in sample_db("Cars")]
     assert lst == [Car(series_number='1234', model='Volkswagen Golf')]
 
-    assert sample_db.value_in_table('Cars', car, pk='series_number') is True
-    assert sample_db.value_in_table('Cars', car.series_number, pk='series_number') is True
+    assert sample_db.model_in_table('Cars', car, pk='series_number') is True
+    assert sample_db.model_in_table('Cars', car.series_number, pk='series_number') is True
 
 
 def test_exception_unkwon_table():

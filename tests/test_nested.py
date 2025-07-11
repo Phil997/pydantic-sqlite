@@ -49,7 +49,7 @@ def test_nested_basemodels_level_0():
     person = Person(uuid=str(uuid4()), name="unitest")
 
     db.add('Person', person)
-    assert db.value_in_table('Person', person)
+    assert db.model_in_table('Person', person)
 
 
 def test_nested_basemodels_level_1():
@@ -58,10 +58,10 @@ def test_nested_basemodels_level_1():
     employee = Employee(uuid=str(uuid4()), person=person)
 
     db.add('Person', person)
-    assert db.value_in_table('Person', person)
+    assert db.model_in_table('Person', person)
 
     db.add('Employee', employee, foreign_tables={"person": "Person"})
-    assert db.value_in_table('Employee', employee)
+    assert db.model_in_table('Employee', employee)
     assert isinstance(employee.person, Person)
 
 
@@ -72,15 +72,15 @@ def test_nested_basemodels_level_2():
     team = Baz(uuid=str(uuid4()), employee=employee)
 
     db.add('Person', person)
-    assert db.value_in_table('Person', person)
+    assert db.model_in_table('Person', person)
 
     db.add('Employee', employee, foreign_tables={"person": "Person"})
-    assert db.value_in_table('Employee', employee)
+    assert db.model_in_table('Employee', employee)
     assert isinstance(employee.person, Person)
     assert employee.person.name == "unitest"
 
     db.add('Baz', team, foreign_tables={"employee": "Employee"})
-    assert db.value_in_table('Baz', team)
+    assert db.model_in_table('Baz', team)
     assert isinstance(team.employee, Employee)
     assert isinstance(team.employee.person, Person)
     assert team.employee.person.name == "unitest"
@@ -97,8 +97,8 @@ def test_nested_basemodels_in_typing_list():
     db.add('Person', foo2)
     db.add('Team', ex, foreign_tables={'testcase': 'Person'})
 
-    assert db.value_in_table('Team', ex)
-    assert [foo1, foo2] == db.value_from_table('Team', ex.uuid).testcase
+    assert db.model_in_table('Team', ex)
+    assert [foo1, foo2] == db.model_from_table('Team', ex.uuid).testcase
 
 
 def test_skip_nested():
@@ -107,8 +107,8 @@ def test_skip_nested():
     world = World(uuid=str(uuid4()), hello=hello)
 
     db.add('Worlds', world)
-    assert db.value_in_table('Worlds', world)
-    db.value_from_table('Worlds', world.uuid)
+    assert db.model_in_table('Worlds', world)
+    db.model_from_table('Worlds', world.uuid)
 
 
 def test_skip_nested_in_list():
@@ -118,8 +118,8 @@ def test_skip_nested_in_list():
     ex = Example3(uuid=str(uuid4()), data=[person, employee])
 
     db.add('Example', ex)
-    assert db.value_in_table('Example', ex)
-    ex_res = db.value_from_table('Example', ex.uuid)
+    assert db.model_in_table('Example', ex)
+    ex_res = db.model_from_table('Example', ex.uuid)
     assert ex_res.data == [person, employee]
 
 
@@ -134,7 +134,7 @@ def test_update_the_nested_model():
     employee.person.name = "new_value"
     db.add('Employee', employee, foreign_tables={"person": "Person"})
 
-    assert db.value_from_table('Employee', employee.uuid).person.name == "new_value"
+    assert db.model_from_table('Employee', employee.uuid).person.name == "new_value"
 
 
 def test_update_the_nested_model_indirect():
@@ -148,4 +148,4 @@ def test_update_the_nested_model_indirect():
     person.name = "new_value"
     db.add('Person', person)
 
-    assert db.value_from_table('Employee', employee.uuid).person.name == "new_value"
+    assert db.model_from_table('Employee', employee.uuid).person.name == "new_value"
