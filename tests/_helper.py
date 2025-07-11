@@ -22,14 +22,9 @@ class Employee(BaseModel):
     person: Person
 
 
-class Baz(BaseModel):
-    uuid: str
-    employee: Employee
-
-
 class Team(BaseModel):
     uuid: str
-    testcase: List[Person]
+    employee: Employee
 
 
 class Address(BaseModel):
@@ -42,3 +37,14 @@ class Address(BaseModel):
 class Car(BaseModel):
     series_number: str
     model: str
+
+
+class Garage(BaseModel):
+    uuid: str
+    cars: List[Car]
+
+
+class CarRegistration(BaseModel):
+    id: str
+    person: Person
+    car: Car

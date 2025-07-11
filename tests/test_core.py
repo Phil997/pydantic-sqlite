@@ -5,23 +5,36 @@ from pydantic_sqlite import DataBase
 from ._helper import Address, Car, Employee, Person
 
 
-def test_add_3_items(sample_db: DataBase):
-    sample_db.add("Humans", Person(uuid="1234", name="Han Solo"), pk='uuid')
-    sample_db.add("Humans", Person(uuid="5678", name="Darth Vader"), pk='uuid')
-    sample_db.add("Humans", Person(uuid="abcd", name="Yoda"), pk='uuid')
+def test_add():
+    db = DataBase()
+    person = Person(uuid="1234", name="Test User")
+    db.add("Persons", person)
 
-    assert sample_db.models_in_table("Humans") == 3
+    assert db.model_in_table('Persons', person)
+    assert db.model_in_table('Persons', person.uuid)
+
+    for x in db('Persons'):
+        assert isinstance(x, Person)
 
 
-def test_model_in_table_with_alternative_pk(sample_db: DataBase):
+def test_add_3_items():
+    db = DataBase()
+    db.add("Humans", Person(uuid="1234", name="Han Solo"), pk='uuid')
+    db.add("Humans", Person(uuid="5678", name="Darth Vader"), pk='uuid')
+    db.add("Humans", Person(uuid="abcd", name="Yoda"), pk='uuid')
+
+    assert db.models_in_table("Humans") == 3
+
+
+def test_alternative_primary_key(sample_db: DataBase):
     car = Car(series_number="1234", model="Volkswagen Golf")
     sample_db.add("Cars", car, pk='series_number')
 
     lst = [c for c in sample_db("Cars")]
     assert lst == [Car(series_number='1234', model='Volkswagen Golf')]
 
-    assert sample_db.model_in_table('Cars', car, pk='series_number') is True
-    assert sample_db.model_in_table('Cars', car.series_number, pk='series_number') is True
+    assert sample_db.model_in_table('Cars', car) is True
+    assert sample_db.model_in_table('Cars', car.series_number) is True
 
 
 def test_exception_unkwon_table():

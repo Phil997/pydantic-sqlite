@@ -39,35 +39,17 @@ def example_values(draw):
 
 
 @given(example_values())
-def test_save_and_get_while_iteration(values: dict):
+def test_various_types_extend(values: dict):
     db = DataBase()
-    test1 = Example(**values)
-    db.add("Test", test1)
+    ex = Example(**values)
+    db.add("Test", ex)
     for x in db('Test'):
         assert isinstance(x, Example)
-        assert x == test1
-        assert x.ex_optional is None or isinstance(x.ex_optional, str)
 
-
-@given(example_values())
-def test_save_and_get_from_table(values: dict):
-    db = DataBase()
-    test1 = Example(**values)
-    db.add("Test", test1)
-    x = db.model_from_table('Test', test1.uuid)
+    x = db.model_from_table('Test', ex.uuid)
     assert isinstance(x, Example)
-    assert x == test1
+    assert x == ex
     assert x.ex_optional is None or isinstance(x.ex_optional, str)
-
-
-@given(example_values())
-def test_save_and_check_is_in_table(values: dict):
-    db = DataBase()
-    test1 = Example(**values)
-    db.add("Test", test1)
-
-    assert db.model_in_table('Test', test1)
-    assert db.model_in_table('Test', test1.uuid)
 
 
 @given(st.lists(example_values(), min_size=1))

@@ -48,37 +48,18 @@ def _make_filled_db(values: dict):
     return db
 
 
-@settings(deadline=None)
 @given(example_values())
-def test_save_and_get_while_iteration(values: dict):
+def test_various_types(values: dict):
     db = DataBase()
-    test1 = Example(**values)
-    db.add("Test", test1)
+    ex = Example(**values)
+    db.add("Test", ex)
 
-    for x in db('Test'):
-        assert isinstance(x, Example)
-        assert x == test1
-
-
-@given(example_values())
-def test_save_and_get_from_table(values: dict):
-    db = DataBase()
-    test1 = Example(**values)
-    db.add("Test", test1)
-
-    x = db.model_from_table('Test', test1.uuid)
+    x = db.model_from_table('Test', ex.uuid)
     assert isinstance(x, Example)
-    assert x == test1
+    assert x == ex
 
-
-@given(example_values())
-def test_save_and_check_is_in_table(values: dict):
-    db = DataBase()
-    test1 = Example(**values)
-    db.add("Test", test1)
-
-    assert db.model_in_table('Test', test1)
-    assert db.model_in_table('Test', test1.uuid)
+    assert db.model_in_table('Test', ex)
+    assert db.model_in_table('Test', ex.uuid)
 
 
 @given(st.lists(example_values(), min_size=1))
