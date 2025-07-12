@@ -20,14 +20,14 @@ class FailSafeDataBase:
     a backup snapshot is automatically created to prevent data loss.
 
     Attributes:
-        dbname (str): The name of the database file.
-        db (DataBase): The database instance managed by this context manager.
         _ctx (Optional[_GeneratorContextManager]): Internal context manager state.
+        _db (DataBase): The database instance managed by this context manager.
+        dbname (str): The name of the database file.
         snapshot_suffix (str): Suffix for snapshot files (default: '_snapshot.db').
     """
-    dbname: str
-    db: DataBase
     _ctx: Optional[_GeneratorContextManager]
+    _db: Optional[DataBase]
+    dbname: str
     snapshot_suffix: str
 
     def __init__(self, dbname: str, snapshot_suffix: str = "_snapshot.db", **kwargs) -> None:
@@ -74,7 +74,7 @@ class FailSafeDataBase:
         """
         assert self._ctx is not None, "Context was not entered"
         if exc_type:
-            self.db.save(filename=get_unique_filename(f"{self.dbname[:-3]}{self.snapshot_suffix}"))
+            self._db.save(filename=get_unique_filename(f"{self.dbname[:-3]}{self.snapshot_suffix}"))
         return self._ctx.__exit__(exc_type, exc, tb)
 
     @contextmanager
@@ -87,9 +87,9 @@ class FailSafeDataBase:
             DataBase: The database instance for use within the context.
         """
         try:
-            self.db = DataBase(**self._db_kwargs)
+            self._db = DataBase(**self._db_kwargs)
             if os.path.isfile(self.dbname):
-                self.db.load(self.dbname)
-            yield self.db
+                self._db.load(self.dbname)
+            yield self._db
         finally:
             pass
