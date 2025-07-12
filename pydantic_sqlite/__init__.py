@@ -1,7 +1,7 @@
 from ._core import DataBase
-from ._handler import DB_Handler
+from ._wrapper import FailSafeDataBase
 
 __all__ = [
-    "DB_Handler",
+    "FailSafeDataBase",
     "DataBase"
 ]

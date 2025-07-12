@@ -6,51 +6,63 @@ from ._core import DataBase
 from ._misc import get_unique_filename
 
 
-class DB_Handler:
+class FailSafeDataBase:
     """
-    A context manager wrapper for the DataBase class that provides automatic db snapshotting on an exception.
+    Context manager for the DataBase class that automatically creates a database snapshot if
+    an unexpected exception occurs.
 
-    When used as a context manager, DB_Handler returns a DataBase instance. If an exception occurs
+    When used as a context manager, FailSafeDataBase returns a DataBase instance. If an exception occurs
     within the context, it saves a snapshot of the database to a file named '<dbname>_snapshot.db' by default.
     If such a file already exists, the filename is incremented (e.g., '<dbname>_snapshot(1).db').
     The snapshot suffix can be configured via the constructor.
+
+    This class is designed to be fail-safe: if an error or exception interrupts database operations,
+    a backup snapshot is automatically created to prevent data loss.
+
+    Attributes:
+        _ctx (Optional[_GeneratorContextManager]): Internal context manager state.
+        _db (DataBase): The database instance managed by this context manager.
+        dbname (str): The name of the database file.
+        snapshot_suffix (str): Suffix for snapshot files (default: '_snapshot.db').
     """
-    dbname: str
-    db: DataBase
     _ctx: Optional[_GeneratorContextManager]
+    _db: Optional[DataBase]
+    dbname: str
     snapshot_suffix: str
 
-    def __init__(self, dbname: str, snapshot_suffix: str = "_snapshot.db") -> None:
+    def __init__(self, dbname: str, snapshot_suffix: str = "_snapshot.db", **kwargs) -> None:
         """
-        Initialize the DB_Handler with the given database name and snapshot suffix.
+        Initialize the FailSafeDataBase with the given database name and snapshot suffix.
         Ensures the database filename ends with '.db'.
 
         Args:
             dbname (str): The name of the database file (with or without '.db' extension).
             snapshot_suffix (str): The suffix to use for snapshot files (default: '_snapshot.db').
+            **kwargs: Additional keyword arguments to pass to the DataBase constructor.
         """
         self._ctx = None
         if not dbname.endswith(".db"):
             dbname += ".db"
         self.dbname = dbname
         self.snapshot_suffix = snapshot_suffix
+        self._db_kwargs = kwargs
 
     def __enter__(self) -> DataBase:
         """
-        Enters the context manager, returning a DataBase instance.
-        Raises an error if the handler is re-entered.
+        Enter the context manager, returning a DataBase instance.
+        Raises an error if the manager is re-entered.
 
         Returns:
             DataBase: The database instance for use within the context.
         """
         if self._ctx is not None:
-            raise RuntimeError('DB_Handler is not reentrant')
+            raise RuntimeError('FailSafeDataBase is not reentrant')
         self._ctx = self._contextmanager()
         return self._ctx.__enter__()
 
     def __exit__(self, exc_type: Optional[type], exc: Optional[BaseException], tb: Optional[Any]) -> Optional[bool]:
         """
-        Exits the context manager. If an exception occurred, saves a snapshot of the database.
+        Exit the context manager. If an exception occurred, automatically saves a snapshot of the database.
 
         Args:
             exc_type (Optional[type]): The exception type, if any.
@@ -62,7 +74,7 @@ class DB_Handler:
         """
         assert self._ctx is not None, "Context was not entered"
         if exc_type:
-            self.db.save(filename=get_unique_filename(f"{self.dbname[:-3]}{self.snapshot_suffix}"))
+            self._db.save(filename=get_unique_filename(f"{self.dbname[:-3]}{self.snapshot_suffix}"))
         return self._ctx.__exit__(exc_type, exc, tb)
 
     @contextmanager
@@ -75,9 +87,9 @@ class DB_Handler:
             DataBase: The database instance for use within the context.
         """
         try:
-            self.db = DataBase()
+            self._db = DataBase(**self._db_kwargs)
             if os.path.isfile(self.dbname):
-                self.db.load(self.dbname)
-            yield self.db
+                self._db.load(self.dbname)
+            yield self._db
         finally:
             pass

@@ -193,8 +193,8 @@ print(next(db("CarRegistrations")))
 
 ```
 
-### DB_Handler
-The `DB_Handler` serves as a context manager wrapper for the `DataBase`. The database returned by the context manager functions identically to those in previous examples.
+### FailSafeDataBase
+The `FailSafeDataBase` serves as a context manager wrapper for the `DataBase`. The database returned by the context manager functions identically to those in previous examples.
 
 However, the handler offers an added benefit: in case of an exception, it automatically saves a database snapshot with the latest values as `<<dbname>_snapshot.db` (by default). If such a file already exists, the filename is iteratively incremented (e.g., `<<dbname>_snapshot(1).db`).
 
@@ -205,14 +205,14 @@ For instance, running this example generates two files: `humans.db` and `humans_
 ```python
 from uuid import uuid4
 from pydantic import BaseModel
-from pydantic_sqlite import DB_Handler
+from pydantic_sqlite import FailSafeDataBase
 
 class Person(BaseModel):
     uuid: str
     name: str
     age: int
 
-with DB_Handler("humans", snapshot_suffix="_snapshot.db") as db:
+with FailSafeDataBase("humans", snapshot_suffix="_snapshot.db") as db:
     test1 = Person(uuid=str(uuid4()), name="Bob", age=12)
     db.add("Test", test1)
     for x in db("Test"):
