@@ -135,8 +135,8 @@ def test_alternative_primary_key_mix_list():
     db.add("Cars", car2, pk='series_number')
     db.add("Garages", garage, foreign_tables={"cars": "Cars"})
 
-    assert db.models_in_table("Cars") == 2
-    assert db.models_in_table("Garages") == 1
+    assert db.count_entries_in_table("Cars") == 2
+    assert db.count_entries_in_table("Garages") == 1
 
     assert next(db("Garages")) == garage
 

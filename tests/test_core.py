@@ -23,7 +23,7 @@ def test_add_3_items():
     db.add("Humans", Person(uuid="5678", name="Darth Vader"), pk='uuid')
     db.add("Humans", Person(uuid="abcd", name="Yoda"), pk='uuid')
 
-    assert db.models_in_table("Humans") == 3
+    assert db.count_entries_in_table("Humans") == 3
 
 
 def test_alternative_primary_key(sample_db: DataBase):
@@ -35,6 +35,19 @@ def test_alternative_primary_key(sample_db: DataBase):
 
     assert sample_db.model_in_table('Cars', car) is True
     assert sample_db.model_in_table('Cars', car.series_number) is True
+
+
+def test_no_model_mix_allowed_in_table():
+    """
+    Test that only models of the same type can be added to a table.
+    """
+    db = DataBase()
+    person = Person(uuid="1234", name="Test User")
+    address = Address(uuid="5678", street="Main St", city="Springfield", zip_code="12345")
+
+    db.add("MyTable", person)
+    with pytest.raises(TypeError):
+        db.add("MyTable", address)
 
 
 def test_exception_unkwon_table():

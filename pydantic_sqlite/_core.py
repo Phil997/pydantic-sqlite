@@ -235,6 +235,18 @@ class DataBase:
             raise KeyError(msg)
         return foreign_table_name
 
+    def count_entries_in_table(self, tablename: str) -> int:
+        """
+        Returns the number of models in the table.
+
+        Args:
+            tablename (str): The name of the table.
+
+        Returns:
+            int: The number of models in the table.
+        """
+        return self._db[tablename].count
+
     def model_in_table(self, tablename: str, pk_value: Union[str, BaseModel]) -> bool:
         """
         Checks if the given model is in the table.
@@ -278,18 +290,6 @@ class DataBase:
             return None
         else:
             return self._build_basemodel_from_dict(model, entries[0], foreign_refs=foreign_refs, pk=_pk)
-
-    def models_in_table(self, tablename: str) -> int:
-        """
-        Returns the number of models in the table.
-
-        Args:
-            tablename (str): The name of the table.
-
-        Returns:
-            int: The number of models in the table.
-        """
-        return self._db[tablename].count
 
     def load(self, filename: str) -> None:
         """
