@@ -2,7 +2,7 @@
 
 ![Python](https://img.shields.io/badge/python-3.8%20|%203.9%20|%203.10%20|%203.11%20|%203.12%20|%203.13-blue?logo=python&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)
-[![codecov](https://codecov.io/gh/Phil997/pydantic-sqlite/branch/main/graph/badge.svg)](https://codecov.io/gh/Phil997/pydantic-sqlite)
+[![codecov](https://codecov.io/github/Phil997/pydantic-sqlite/graph/badge.svg?token=MCCXX7XF9V)](https://codecov.io/github/Phil997/pydantic-sqlite)
 
 
 A lightweight package for storing `pydantic` `BaseModel` in a `SQLite` database.
