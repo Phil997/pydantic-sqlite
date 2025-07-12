@@ -4,7 +4,6 @@ from unittest import mock
 from uuid import uuid4
 
 import pytest
-from pydantic import BaseModel
 from testfixtures import TempDirectory
 
 from pydantic_sqlite import DataBase
@@ -128,8 +127,18 @@ def test_save_and_load(tmp_path: Path, sample_db: DataBase):
     assert len(list(db2(TEST_TABLE_NAME))) == LENGTH
 
     for person in db2(TEST_TABLE_NAME):
-        assert isinstance(person, BaseModel)
         assert isinstance(person, Person)
+
+
+def test_save_and_load_path(tmp_path: Path, sample_db: DataBase):
+    sample_db.save(tmp_path / TEST_DB_NAME)
+    assert TEST_DB_NAME in os.listdir(tmp_path)
+    assert len(os.listdir(tmp_path)) == 1
+
+    db2 = DataBase()
+    db2.load(tmp_path / TEST_DB_NAME)
+    assert len(db2._db.table_names()) == 2
+    assert len(list(db2(TEST_TABLE_NAME))) == LENGTH
 
 
 def test_persistent_db_save(persistent_db):
