@@ -28,11 +28,8 @@ jobs:
       - run: poetry run flake8
       - run: poetry run pytest --cov=pydantic_sqlite/ --cov-report term-missing --cov-branch  --cov-report xml:coverage/coverage.xml
 
-      - name: Pytest coverage comment
-        if: ${{ !cancelled() && matrix.python == '3.13' && matrix.os == 'ubuntu-latest' }}
-        continue-on-error: true
-        uses: MishaKav/pytest-coverage-comment@v1.1.54
+      - run: poetry run coverage xml
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
         with:
-          pytest-xml-coverage-path: ./coverage/coverage.xml
-          coverage-path-prefix: pydantic_sqlite
-          github-token: ${{ github.token }}
+          token: ${{ secrets.CODECOV_TOKEN }}
