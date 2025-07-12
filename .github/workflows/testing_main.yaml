@@ -1,0 +1,29 @@
+name: code_check
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  code_check:
+    name: 'Run Test for Covergae in main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install poetry
+        run: |
+          pip install poetry==1.7.1
+          poetry config virtualenvs.in-project true
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+      - run: poetry install
+
+      - run: poetry run pytest --cov=pydantic_sqlite/ --cov-report term-missing --cov-branch  --cov-report xml:coverage/coverage.xml
+
+      - run: poetry run coverage xml
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
