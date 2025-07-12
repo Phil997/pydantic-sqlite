@@ -102,7 +102,7 @@ def test_save_log_on_exception(tmp_path: Path, sample_db: DataBase, caplog: pyte
 
     with TempDirectory() as d2:
         with mock.patch("pydantic_sqlite._core.tempfile.mkdtemp", lambda: d2.path):
-            expected_backup_file = f"{str(d2.path + '/' + TEST_DB_NAME)}.backup"
+            expected_backup_file = f"{str(d2.path + os.path.sep + TEST_DB_NAME)}.backup"
 
             with mock.patch("pydantic_sqlite._core.sqlite3.connect", side_effect=DummyException("Test exception")):
                 with pytest.raises(DummyException, match="Test exception"):
