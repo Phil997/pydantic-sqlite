@@ -12,6 +12,11 @@ from pydantic_sqlite import DataBase
 from ._helper import LENGTH, TEST_DB_NAME, TEST_TABLE_NAME, Person
 
 
+class DummyException(Exception):
+    """Dummy exception for testing purposes."""
+    ...
+
+
 @pytest.fixture()
 def persistent_db(tmp_path: Path):
     db = DataBase(filename_or_conn=str(tmp_path / TEST_DB_NAME))
@@ -48,21 +53,63 @@ def test_save_override_existing_db(tmp_path: Path, sample_db: DataBase):
     assert len(os.listdir(tmp_path)) == 1
 
 
-def test_backup_file_on_existing_file(tmp_path: Path, sample_db: DataBase):
+def test_save_write_backup_file(tmp_path: Path, sample_db: DataBase):
+    """
+    * tmp_path is the directory where the database should be saved
+    * the d1, d2, and d3 are temporary directories created to test the backup functionality
+    * The backup is only created if file already exists
+
+    * On the first save, no backup is created, because the file does not exist yet
+    * On the second save, a backup is created in the temporary directory
+    * On the third save, a backup is created with a custom suffix
+    """
     with TempDirectory() as d1:
         with mock.patch("pydantic_sqlite._core.tempfile.mkdtemp", lambda: d1.path):
             sample_db.save(str(tmp_path / TEST_DB_NAME))
         assert TEST_DB_NAME in os.listdir(tmp_path)
-        assert TEST_DB_NAME in os.listdir(d1.path)
-        assert "_backup.db" not in os.listdir(d1.path)
+        assert f"{TEST_DB_NAME}.backup" not in os.listdir(d1.path)
 
     with TempDirectory() as d2:
         with mock.patch("pydantic_sqlite._core.tempfile.mkdtemp", lambda: d2.path):
             sample_db.save(str(tmp_path / TEST_DB_NAME))
-
         assert TEST_DB_NAME in os.listdir(tmp_path)
-        assert TEST_DB_NAME in os.listdir(d2.path)
-        assert "_backup.db" in os.listdir(d2.path)
+        assert f"{TEST_DB_NAME}.backup" in os.listdir(d2.path)
+
+    with TempDirectory() as d3:
+        with mock.patch("pydantic_sqlite._core.tempfile.mkdtemp", lambda: d3.path):
+            sample_db.save(str(tmp_path / TEST_DB_NAME), backup_suffix=".mybackup")
+        assert TEST_DB_NAME in os.listdir(tmp_path)
+        assert f"{TEST_DB_NAME}.mybackup" in os.listdir(d3.path)
+
+
+def test_save_write_backup_file_skip(tmp_path: Path, sample_db: DataBase):
+    (tmp_path / TEST_DB_NAME).touch()  # Create an empty file to simulate existing database
+
+    with TempDirectory() as d1:
+        with mock.patch("pydantic_sqlite._core.tempfile.mkdtemp", lambda: d1.path):
+            sample_db.save(str(tmp_path / TEST_DB_NAME))
+        assert TEST_DB_NAME in os.listdir(tmp_path)
+        assert f"{TEST_DB_NAME}.backup" in os.listdir(d1.path)
+
+    with TempDirectory() as d2:
+        with mock.patch("pydantic_sqlite._core.tempfile.mkdtemp", lambda: d2.path):
+            sample_db.save(str(tmp_path / TEST_DB_NAME), backup=False)
+        assert TEST_DB_NAME in os.listdir(tmp_path)
+        assert f"{TEST_DB_NAME}.backup" not in os.listdir(d2.path)
+
+
+def test_save_log_on_exception(tmp_path: Path, sample_db: DataBase, caplog: pytest.LogCaptureFixture):
+
+    with TempDirectory() as d2:
+        with mock.patch("pydantic_sqlite._core.tempfile.mkdtemp", lambda: d2.path):
+            expected_backup_file = f"{str(d2.path + '/' + TEST_DB_NAME)}.backup"
+
+            with mock.patch("pydantic_sqlite._core.sqlite3.connect", side_effect=DummyException("Test exception")):
+                with pytest.raises(DummyException, match="Test exception"):
+                    sample_db.save(str(tmp_path / TEST_DB_NAME))
+
+    assert caplog.records[0].levelname == "WARNING"
+    assert caplog.records[0].message == f"saved the backup file under '{expected_backup_file}'"
 
 
 def test_load_raise_exception_not_existing(tmp_path: Path, sample_db: DataBase):

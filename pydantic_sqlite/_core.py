@@ -316,13 +316,22 @@ class DataBase:
                 pk=json.loads(model["pks"])[0],
             )
 
-    def save(self, filename: str) -> None:
+    def save(self, filename: str, backup: bool = True, backup_suffix: str = ".backup") -> None:
         """
-        Saves all models from the in-memory database to a file.
-        If the database is persistent, does nothing and returns None.
+        Save all models from the in-memory database to a file.
+
+        If the database is persistent (not in-memory), this method does nothing and returns immediately.
+        Otherwise, it exports the current state of the in-memory database to the specified file.
+
+        If the file already exists and backup is True, a backup is created before overwriting, using the
+        given backup_suffix. The database is first dumped to a temporary file, then copied to the target
+        location. In case of an error during saving, a backup file is retained and a warning is logged.
 
         Args:
             filename (str): The path to the file where the database should be saved.
+              The extension '.db' is appended if missing.
+            backup (bool): If True, create a backup of the existing file before overwriting. Default is True.
+            backup_suffix (str): Suffix for the backup file. Default is '.backup'.
         """
         if self.filename != ":memory:":
             logging.warning(f"database is persistent, already stored in a file: {self.filename}")
@@ -331,13 +340,14 @@ class DataBase:
         if not filename.endswith(".db"):
             filename += ".db"
 
-        tmp_dir = tempfile.mkdtemp()
         name = filename.split(os.path.sep)[-1]
+        tmp_dir = tempfile.mkdtemp()
         tmp_name = tmp_dir + os.path.sep + name
-        backup = tmp_dir + os.path.sep + "_backup.db"
+        backup_file = tmp_name + backup_suffix
 
-        if os.path.isfile(filename):
-            copyfile(filename, backup)
+        if os.path.isfile(filename) and backup:
+
+            copyfile(filename, backup_file)
         try:
             file_db = sqlite3.connect(tmp_name)
             query = "".join(line for line in self._db.conn.iterdump())
@@ -345,7 +355,8 @@ class DataBase:
             file_db.close()
             copyfile(tmp_name, filename)
         except Exception:
-            logging.warning(f"saved the backup file under '{backup}'")
+            if backup:
+                logging.warning(f"saved the backup file under '{backup_file}'")
             raise
 
     def _create_new_table(self, tablename: str, basemodel_cls: ModelMetaclass, pk: str) -> None:
