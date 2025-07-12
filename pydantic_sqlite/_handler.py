@@ -20,7 +20,7 @@ class DB_Handler:
     _ctx: Optional[_GeneratorContextManager]
     snapshot_suffix: str
 
-    def __init__(self, dbname: str, snapshot_suffix: str = "_snapshot.db") -> None:
+    def __init__(self, dbname: str, snapshot_suffix: str = "_snapshot.db", **kwargs) -> None:
         """
         Initialize the DB_Handler with the given database name and snapshot suffix.
         Ensures the database filename ends with '.db'.
@@ -28,12 +28,14 @@ class DB_Handler:
         Args:
             dbname (str): The name of the database file (with or without '.db' extension).
             snapshot_suffix (str): The suffix to use for snapshot files (default: '_snapshot.db').
+            **kwargs: Additional keyword arguments to pass to the DataBase constructor.
         """
         self._ctx = None
         if not dbname.endswith(".db"):
             dbname += ".db"
         self.dbname = dbname
         self.snapshot_suffix = snapshot_suffix
+        self._db_kwargs = kwargs
 
     def __enter__(self) -> DataBase:
         """
@@ -75,7 +77,7 @@ class DB_Handler:
             DataBase: The database instance for use within the context.
         """
         try:
-            self.db = DataBase()
+            self.db = DataBase(**self._db_kwargs)
             if os.path.isfile(self.dbname):
                 self.db.load(self.dbname)
             yield self.db

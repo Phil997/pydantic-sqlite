@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from unittest import mock
 from uuid import uuid4
 
 import pytest
@@ -23,6 +24,24 @@ def test_context_manager():
         with pytest.raises(RuntimeError):
             with handler:
                 ...  # re-entering the context manager should raise an error
+
+
+def test_pass_kwargs(tmp_path: Path):
+    with mock.patch("pydantic_sqlite._core._Database") as mocked_sqlite_database:
+        with DB_Handler("mytest"):
+            mocked_sqlite_database.assert_called_once_with(memory=True)
+
+    with mock.patch("pydantic_sqlite._core._Database") as mocked_sqlite_database:
+        with DB_Handler("mytest", snapshot_suffix="_snapshot.db"):
+            mocked_sqlite_database.assert_called_once_with(memory=True)
+
+    with mock.patch("pydantic_sqlite._core._Database") as mocked_sqlite_database:
+        with DB_Handler("mytest", filename_or_conn=str(tmp_path / TEST_DB_NAME)):
+            mocked_sqlite_database.assert_called_once_with(str(tmp_path / TEST_DB_NAME))
+
+    with mock.patch("pydantic_sqlite._core._Database") as mocked_sqlite_database:
+        with DB_Handler("mytest", filename_or_conn=str(tmp_path / TEST_DB_NAME), strict=True):
+            mocked_sqlite_database.assert_called_once_with(str(tmp_path / TEST_DB_NAME), strict=True)
 
 
 def test_save_DataBase(tmp_path: Path):
