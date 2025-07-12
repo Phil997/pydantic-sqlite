@@ -8,12 +8,22 @@ from ._misc import get_unique_filename
 
 class FailSafeDataBase:
     """
-    A context manager wrapper for the DataBase class that provides automatic db snapshotting on an exception.
+    Context manager for the DataBase class that automatically creates a database snapshot if
+    an unexpected exception occurs.
 
     When used as a context manager, FailSafeDataBase returns a DataBase instance. If an exception occurs
     within the context, it saves a snapshot of the database to a file named '<dbname>_snapshot.db' by default.
     If such a file already exists, the filename is incremented (e.g., '<dbname>_snapshot(1).db').
     The snapshot suffix can be configured via the constructor.
+
+    This class is designed to be fail-safe: if an error or exception interrupts database operations,
+    a backup snapshot is automatically created to prevent data loss.
+
+    Attributes:
+        dbname (str): The name of the database file.
+        db (DataBase): The database instance managed by this context manager.
+        _ctx (Optional[_GeneratorContextManager]): Internal context manager state.
+        snapshot_suffix (str): Suffix for snapshot files (default: '_snapshot.db').
     """
     dbname: str
     db: DataBase
@@ -39,8 +49,8 @@ class FailSafeDataBase:
 
     def __enter__(self) -> DataBase:
         """
-        Enters the context manager, returning a DataBase instance.
-        Raises an error if the handler is re-entered.
+        Enter the context manager, returning a DataBase instance.
+        Raises an error if the manager is re-entered.
 
         Returns:
             DataBase: The database instance for use within the context.
@@ -52,7 +62,7 @@ class FailSafeDataBase:
 
     def __exit__(self, exc_type: Optional[type], exc: Optional[BaseException], tb: Optional[Any]) -> Optional[bool]:
         """
-        Exits the context manager. If an exception occurred, saves a snapshot of the database.
+        Exit the context manager. If an exception occurred, automatically saves a snapshot of the database.
 
         Args:
             exc_type (Optional[type]): The exception type, if any.
