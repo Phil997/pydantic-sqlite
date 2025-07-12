@@ -6,11 +6,11 @@ from ._core import DataBase
 from ._misc import get_unique_filename
 
 
-class DB_Handler:
+class FailSafeDataBase:
     """
     A context manager wrapper for the DataBase class that provides automatic db snapshotting on an exception.
 
-    When used as a context manager, DB_Handler returns a DataBase instance. If an exception occurs
+    When used as a context manager, FailSafeDataBase returns a DataBase instance. If an exception occurs
     within the context, it saves a snapshot of the database to a file named '<dbname>_snapshot.db' by default.
     If such a file already exists, the filename is incremented (e.g., '<dbname>_snapshot(1).db').
     The snapshot suffix can be configured via the constructor.
@@ -22,7 +22,7 @@ class DB_Handler:
 
     def __init__(self, dbname: str, snapshot_suffix: str = "_snapshot.db", **kwargs) -> None:
         """
-        Initialize the DB_Handler with the given database name and snapshot suffix.
+        Initialize the FailSafeDataBase with the given database name and snapshot suffix.
         Ensures the database filename ends with '.db'.
 
         Args:
@@ -46,7 +46,7 @@ class DB_Handler:
             DataBase: The database instance for use within the context.
         """
         if self._ctx is not None:
-            raise RuntimeError('DB_Handler is not reentrant')
+            raise RuntimeError('FailSafeDataBase is not reentrant')
         self._ctx = self._contextmanager()
         return self._ctx.__enter__()
 
