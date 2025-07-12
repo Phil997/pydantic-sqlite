@@ -1,6 +1,6 @@
-import os
 from contextlib import _GeneratorContextManager, contextmanager
-from typing import Any, Generator, Optional
+from pathlib import Path
+from typing import Any, Generator, Optional, Union
 
 from ._core import DataBase
 from ._misc import get_unique_filename
@@ -22,28 +22,29 @@ class FailSafeDataBase:
     Attributes:
         _ctx (Optional[_GeneratorContextManager]): Internal context manager state.
         _db (DataBase): The database instance managed by this context manager.
-        dbname (str): The name of the database file.
+        dbname (Path): The name of the database file as a Path object.
         snapshot_suffix (str): Suffix for snapshot files (default: '_snapshot.db').
     """
     _ctx: Optional[_GeneratorContextManager]
     _db: Optional[DataBase]
-    dbname: str
+    dbname: Path
     snapshot_suffix: str
 
-    def __init__(self, dbname: str, snapshot_suffix: str = "_snapshot.db", **kwargs) -> None:
+    def __init__(self, dbname: Union[str, Path], snapshot_suffix: str = "_snapshot.db", **kwargs) -> None:
         """
         Initialize the FailSafeDataBase with the given database name and snapshot suffix.
         Ensures the database filename ends with '.db'.
 
         Args:
-            dbname (str): The name of the database file (with or without '.db' extension).
+            dbname (Union[str, Path]): The name of the database file (with or without '.db' extension).
             snapshot_suffix (str): The suffix to use for snapshot files (default: '_snapshot.db').
             **kwargs: Additional keyword arguments to pass to the DataBase constructor.
         """
         self._ctx = None
-        if not dbname.endswith(".db"):
-            dbname += ".db"
-        self.dbname = dbname
+        db_path = Path(dbname)
+        if db_path.suffix != ".db":
+            db_path = db_path.with_suffix(".db")
+        self.dbname = db_path
         self.snapshot_suffix = snapshot_suffix
         self._db_kwargs = kwargs
 
@@ -74,7 +75,8 @@ class FailSafeDataBase:
         """
         assert self._ctx is not None, "Context was not entered"
         if exc_type:
-            self._db.save(filename=get_unique_filename(f"{self.dbname[:-3]}{self.snapshot_suffix}"))
+            snapshot_path = get_unique_filename(f"{self.dbname.with_suffix('')}{self.snapshot_suffix}")
+            self._db.save(filename=snapshot_path)
         return self._ctx.__exit__(exc_type, exc, tb)
 
     @contextmanager
@@ -88,7 +90,7 @@ class FailSafeDataBase:
         """
         try:
             self._db = DataBase(**self._db_kwargs)
-            if os.path.isfile(self.dbname):
+            if self.dbname.exists():
                 self._db.load(self.dbname)
             yield self._db
         finally:
