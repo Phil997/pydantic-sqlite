@@ -40,7 +40,7 @@ def example_values(draw):
     )
 
 
-def make_filled_db(values):
+def _make_filled_db(values: dict):
     db = DataBase()
     examples = [Example(**vls) for vls in values]
     for ex in examples:
@@ -48,41 +48,22 @@ def make_filled_db(values):
     return db
 
 
-@settings(deadline=None)
 @given(example_values())
-def test_save_and_get_while_iteration(values):
+def test_various_types(values: dict):
     db = DataBase()
-    test1 = Example(**values)
-    db.add("Test", test1)
+    ex = Example(**values)
+    db.add("Test", ex)
 
-    for x in db('Test'):
-        assert isinstance(x, Example)
-        assert x == test1
-
-
-@given(example_values())
-def test_save_and_get_from_table(values):
-    db = DataBase()
-    test1 = Example(**values)
-    db.add("Test", test1)
-
-    x = db.value_from_table('Test', test1.uuid)
+    x = db.model_from_table('Test', ex.uuid)
     assert isinstance(x, Example)
-    assert x == test1
+    assert x == ex
 
-
-@given(example_values())
-def test_save_and_check_is_in_table(values):
-    db = DataBase()
-    test1 = Example(**values)
-    db.add("Test", test1)
-
-    assert db.uuid_in_table('Test', test1.uuid)
-    assert db.value_in_table('Test', test1)
+    assert db.model_in_table('Test', ex)
+    assert db.model_in_table('Test', ex.uuid)
 
 
 @given(st.lists(example_values(), min_size=1))
-def test_save_and_get_while_iteration_multiple(values):
+def test_save_and_get_while_iteration_multiple(values: dict):
     db = DataBase()
 
     examples = [Example(**vls) for vls in values]
@@ -97,7 +78,7 @@ def test_save_and_get_while_iteration_multiple(values):
 
 
 @given(st.lists(example_values(), min_size=1))
-def test_save_and_get_from_table_multiple(values):
+def test_save_and_get_from_table_multiple(values: dict):
     db = DataBase()
 
     examples = [Example(**vls) for vls in values]
@@ -106,7 +87,7 @@ def test_save_and_get_from_table_multiple(values):
 
     for _ in range(10):
         ex = choice(examples)
-        res = db.value_from_table('Test', ex.uuid)
+        res = db.model_from_table('Test', ex.uuid)
         assert isinstance(res, Example)
         assert res == ex
 
@@ -122,8 +103,8 @@ def test_save_and_get_from_table_multiple(values):
         {'select': 'ex_str,uuid,ex_int,ex_float,ex_bool,ex_list'},
     ]
 )
-def test_where_kwargs(values, params):
-    filled_db = make_filled_db(values)
+def test_where_kwargs(values: dict, params: dict):
+    filled_db = _make_filled_db(values)
 
     result = list(filled_db("Test", **params))
     if "where_args" in params:

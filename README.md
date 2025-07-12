@@ -13,6 +13,7 @@ You can store any `BaseModel` instance directly in the database, and when queryi
   - [Basic Example](#basic-example)
   - [Nested Example](#nested-example)
   - [Nested Example without Foreign Table](#nested-example-without-foreign-table)
+  - [Nested with different primary keys](#nested-with-different-primary-keys)
   - [DB\_Handler](#db_handler)
 
 ## Installation
@@ -24,7 +25,7 @@ pip install pydantic-sqlite
 ## Usage
 
 ### Basic Example
-Create two instances of the class `Person` and store them in the 'Test' table of the database. Then, retrieve and display all records from the 'Test' table through iteration:
+Create two instances of the class `Person` and store them in the 'Test' table of the database. Then, retrieve and display all records from the 'Test' table through iteration. Per default DataBase uses `uuid` as the primary-key in tha table.
 
 ```python
 from pydantic_sqlite import DataBase
@@ -140,6 +141,56 @@ for y in db("Persons", where='name= :name', where_args={'name': 'Alice'}):
     assert isinstance(y, Person)
     print(y)
 #>>> uuid='...' name='Alice' address=Address(town='Berlin', street='Bahnhofstraße 67')
+```
+
+### Nested with different primary keys
+
+This example demonstrates how to handle nested models where each table uses a different primary key, and how to manage foreign key relationships between them. Here, a `CarRegistration` contains a `Person` and a `Car`, and the `Car` itself contains a list of `Wheel` objects. Each model has its own unique primary key, and the relationships are established using the `foreign_tables` argument.
+
+```python
+from typing import List
+from pydantic import BaseModel
+from pydantic_sqlite import DataBase
+
+class Person(BaseModel):
+    uuid: str
+    name: str
+
+class Wheel(BaseModel):
+    batch_id: str
+    size: int
+
+class Car(BaseModel):
+    series_number: str
+    model: str
+    wheels: List[Wheel]
+
+class CarRegistration(BaseModel):
+    id: str
+    person: Person
+    car: Car
+
+wheels = [Wheel(batch_id=f"P_{i}", size=16) for i in range(4)]
+car = Car(series_number="1234", model="Volkswagen Golf", wheels=wheels)
+person = Person(uuid="abcd", name="John Doe")
+registration = CarRegistration(car=car, person=person, id="fffff")
+
+db = DataBase()
+
+for wheel in wheels:
+    db.add("Wheels", wheel, pk='batch_id')
+db.add("Cars", car, pk='series_number', foreign_tables={"wheels": "Wheels"})
+db.add("Persons", person, pk='uuid')
+db.add("CarRegistrations", registration, pk='id', foreign_tables={"car": "Cars", "person": "Persons"})
+
+print(next(db("Persons")))
+print(next(db("Cars")))
+print(next(db("CarRegistrations")))
+
+#>>> uuid='abcd' name='John Doe'
+#>>> series_number='1234' model='Volkswagen Golf' wheels=[Wheel(batch_id='P_0', size=16), Wheel(batch_id='P_1', size=16), Wheel(batch_id='P_2', size=16), Wheel(batch_id='P_3', size=16)]
+#>>> id='fffff' person=Person(uuid='abcd', name='John Doe') car=Car(series_number='1234', model='Volkswagen Golf', wheels=[Wheel(batch_id='P_0', size=16), Wheel(batch_id='P_1', size=16), Wheel(batch_id='P_2', size=16), Wheel(batch_id='P_3', size=16)])
+
 ```
 
 ### DB_Handler
