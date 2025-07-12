@@ -1,7 +1,8 @@
-# pydantic_sqlite  <!-- omit in toc -->
+# pydantic-sqlite  <!-- omit in toc -->
 
 ![Python](https://img.shields.io/badge/python-3.8%20|%203.9%20|%203.10%20|%203.11%20|%203.12%20|%203.13-blue?logo=python&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)
+[![codecov](https://codecov.io/gh/Phil997/pydantic-sqlite/branch/main/graph/badge.svg)](https://codecov.io/gh/Phil997/pydantic-sqlite)
 
 
 A lightweight package for storing `pydantic` `BaseModel` in a `SQLite` database.
@@ -14,7 +15,7 @@ You can store any `BaseModel` instance directly in the database, and when queryi
   - [Nested Example](#nested-example)
   - [Nested Example without Foreign Table](#nested-example-without-foreign-table)
   - [Nested with different primary keys](#nested-with-different-primary-keys)
-  - [DB\_Handler](#db_handler)
+  - [FailSafeDataBase](#failsafedatabase)
 
 ## Installation
 
