@@ -119,7 +119,7 @@ class DataBase:
     @property
     def filename(self) -> str:
         """
-        Returns the filename of the database. If in-memory, returns ':memory:'.
+        Returns the filename of the database as a Path object if file-based, or ':memory:' if in-memory.
         """
         db_filename = self._db.conn.execute("PRAGMA database_list").fetchone()[2]
         if db_filename in {"", ":memory:"}:
@@ -291,14 +291,16 @@ class DataBase:
         else:
             return self._build_basemodel_from_dict(model, entries[0], foreign_refs=foreign_refs, pk=_pk)
 
-    def load(self, filename: str) -> None:
+    def load(self, filename: Union[str, Path]) -> None:
         """
         Loads all data from the given file and adds them to the in-memory database.
         Raises FileNotFoundError if the file does not exist.
 
         Args:
-            filename (str): The path to the file to load.
+            filename (Union[str, Path]): The path to the file to load.
         """
+        if isinstance(filename, Path):
+            filename = str(filename)
         if not os.path.isfile(filename):
             raise FileNotFoundError(f"Can not load {filename}")
         file_db = sqlite3.connect(filename)
@@ -316,7 +318,7 @@ class DataBase:
                 pk=json.loads(model["pks"])[0],
             )
 
-    def save(self, filename: str, backup: bool = True, backup_suffix: str = ".backup") -> None:
+    def save(self, filename: Union[str, Path], backup: bool = True, backup_suffix: str = ".backup") -> None:
         """
         Save all models from the in-memory database to a file.
 
@@ -328,11 +330,13 @@ class DataBase:
         location. In case of an error during saving, a backup file is retained and a warning is logged.
 
         Args:
-            filename (str): The path to the file where the database should be saved.
+            filename (Union[str, Path]): The path to the file where the database should be saved.
               The extension '.db' is appended if missing.
             backup (bool): If True, create a backup of the existing file before overwriting. Default is True.
             backup_suffix (str): Suffix for the backup file. Default is '.backup'.
         """
+        if isinstance(filename, Path):
+            filename = str(filename)
         if self.filename != ":memory:":
             logging.warning(f"database is persistent, already stored in a file: {self.filename}")
             return
@@ -346,7 +350,6 @@ class DataBase:
         backup_file = tmp_name + backup_suffix
 
         if os.path.isfile(filename) and backup:
-
             copyfile(filename, backup_file)
         try:
             file_db = sqlite3.connect(tmp_name)
