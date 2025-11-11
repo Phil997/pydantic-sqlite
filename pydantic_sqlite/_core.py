@@ -8,7 +8,7 @@ import tempfile
 import typing
 from pathlib import Path
 from shutil import copyfile
-from typing import Any, Dict, Generator, List, Literal, Union, get_origin
+from typing import Any, Generator, Literal, Union, get_origin
 
 from pydantic import BaseModel
 from pydantic._internal._model_construction import ModelMetaclass
@@ -28,16 +28,16 @@ class TableBaseModel:
         table (str): The name of the table.
         basemodel_cls (ModelMetaclass): The Pydantic BaseModel class for the table.
         modulename (str): The module name of the BaseModel class.
-        pks (List[str]): List of primary key field names.
+        pks (list[str]): list of primary key field names.
     """
 
     table: str
     basemodel_cls: ModelMetaclass
     modulename: str
-    pks: List[str]
+    pks: list[str]
 
     def __init__(
-        self, table: str, basemodel_cls: ModelMetaclass, pks: List[str]
+        self, table: str, basemodel_cls: ModelMetaclass, pks: list[str]
     ) -> None:
         """
         Initialize TableBaseModel with table name, BaseModel class, and primary keys.
@@ -45,14 +45,14 @@ class TableBaseModel:
         Args:
             table (str): The name of the table.
             basemodel_cls (ModelMetaclass): The Pydantic BaseModel class for the table.
-            pks (List[str]): List of primary key field names.
+            pks (list[str]): list of primary key field names.
         """
         self.table = table
         self.basemodel_cls = basemodel_cls
         self.modulename = str(basemodel_cls).split("<class '")[1].split("'>")[0]
         self.pks = pks
 
-    def data(self) -> Dict[str, Union[str, List[str]]]:
+    def data(self) -> dict[str, Union[str, list[str]]]:
         """
         Return a dictionary representation of the table metadata.
         """
@@ -69,12 +69,12 @@ class DataBase:
 
     Attributes:
         _db (_Database): The underlying SQLite database instance.
-        _basemodels (Dict[str, TableBaseModel]): Mapping of tablenames and their associated BaseModel classes.
-        _primary_keys (Dict[str, str]): Mapping of tablenames to their primary key field names.
+        _basemodels (dict[str, TableBaseModel]): Mapping of tablenames and their associated BaseModel classes.
+        _primary_keys (dict[str, str]): Mapping of tablenames to their primary key field names.
     """
     _db: _Database
-    _basemodels: Dict[str, TableBaseModel]
-    _primary_keys: Dict[str, str]
+    _basemodels: dict[str, TableBaseModel]
+    _primary_keys: dict[str, str]
 
     def __init__(
         self,
@@ -394,7 +394,7 @@ class DataBase:
         """
         # returns a subclass object of type BaseModel which is build out of
         # class basemodel.basemodel_cls and the data out of the dict
-        field_models: Dict[str, FieldInfo] = tablemodel.basemodel_cls.model_fields
+        field_models: dict[str, FieldInfo] = tablemodel.basemodel_cls.model_fields
         tablemodel.basemodel_cls
         d = {}
 
@@ -422,7 +422,7 @@ class DataBase:
 
     def _upsert_model_in_foreign_table(
         self, field_value: typing.Any, foreign_table_name: str, update_nested_models: bool, pk: str
-    ) -> Union[str, List[str]]:
+    ) -> Union[str, list[str]]:
         """
         Inserts or upserts a nested BaseModel or list of BaseModels into a foreign table.
         Returns the primary keys (s) of the inserted/updated values.
@@ -434,11 +434,11 @@ class DataBase:
             pk (str): The primary key field name.
 
         Returns:
-            Union[str, List[str]]: The primary key or list of primary keys of the inserted/updated models.
+            Union[str, list[str]]: The primary key or list of primary keys of the inserted/updated models.
         """
         # The nested BaseModel will be inserted or upserted to the foreign table if it is not contained there,
-        # or the update_nested_models parameter is True. If the model is Iterable (e.g. List) all models in the
-        # List will be be inserted or upserted. The function returns the ids of the models
+        # or the update_nested_models parameter is True. If the model is Iterable (e.g. list) all models in the
+        # list will be be inserted or upserted. The function returns the ids of the models
 
         # The foreign keys of this table are needed to add the nested basemodel object.
         foreign_refs = {
@@ -454,7 +454,7 @@ class DataBase:
                 self.add(foreign_table_name, model, foreign_tables=foreign_refs, pk=pk)
             return getattr(model, pk)
 
-        if not isinstance(field_value, List):
+        if not isinstance(field_value, list):
             return add_nested_model(field_value)
         else:
             return [add_nested_model(element) for element in field_value]
@@ -478,14 +478,14 @@ class DataBase:
             except AttributeError:
                 return False
 
-        if isinstance(field_value, List):
+        if isinstance(field_value, list):
             if len(field_value) == 0:
                 return False
 
             if not special_possible(obj_class := field_value[0].__class__):
                 return False
             if not all(isinstance(model, type(field_value[0])) for model in field_value):
-                raise ValueError(f"not all values in the List are from the same type: '{field_value}'")
+                raise ValueError(f"not all values in the list are from the same type: '{field_value}'")
             return [obj_class.SQConfig.convert(model) for model in field_value]
         else:
             if not special_possible(obj_class := field_value.__class__):
