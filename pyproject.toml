@@ -1,29 +1,35 @@
-[tool.poetry]
+[project]
 name = "pydantic_sqlite"
 version = "0.4.0"
 description = "Simple package for storing pydantic BaseModels in an in-memory SQLite database."
-authors = ["Your Name <you@example.com>"]
-license = "MIT"
+authors = [
+    {name = "Philipp Jaschke"}
+]
+license = { text = "MIT" }
 readme = "README.md"
-repository = "https://github.com/Phil997/pydantic-sqlite"
 keywords = ["pydantic", "sqlite-utils", "sqlite3"]
-include = [
-    "LICENSE",
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic (>=2.1.0)",
+    "sqlite-utils (>=3.19)"
 ]
 
-[tool.poetry.dependencies]
-python = "^3.10.0"
-pydantic = "^2.1.0"
-sqlite-utils = "^3.19"
+[project.urls]
+Repository = "https://github.com/Phil997/pydantic-sqlite"
 
-[tool.poetry.group.dev.dependencies]
-isort = "^5.13.2"
-flake8 = "^7.0.0"
-pytest = "^8.1.1"
-hypothesis = "^6.100.0"
-testfixtures = "^8.1.0"
-pytest-cov = "<=6"
+[tool.poetry]
+include = ["LICENSE"]
+
+[dependency-groups]
+dev = [
+    "isort (>=5.13.2)",
+    "flake8 (>=7.0.0)",
+    "pytest (>=8.1.1)",
+    "hypothesis (>=6.100.0)",
+    "testfixtures (>=8.1.0)",
+    "pytest-cov (<=6)"
+]
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
