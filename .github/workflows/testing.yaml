@@ -14,13 +14,13 @@ jobs:
         python: ['3.10', '3.11', '3.12', '3.13']
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: install poetry
         run: |
-          pip install poetry==1.7.1
+          pip install poetry==2.2.1
           poetry config virtualenvs.in-project true
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v6
         with:
           python-version: '${{ matrix.python }}'
       - run: poetry install

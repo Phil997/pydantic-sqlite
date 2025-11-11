@@ -1,14 +1,14 @@
 name: pypi_release
 
-on: 
-  release: 
+on:
+  release:
     types: [published]
 
 jobs:
   pypi_release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build and publish to pypi
         uses: JRubics/poetry-publish@v2.0
