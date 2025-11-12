@@ -1,6 +1,6 @@
 import string
 from random import choice
-from typing import Any, List, Literal, Optional, Union
+from typing import Any, Literal, Optional, Union
 from uuid import uuid4
 
 from hypothesis import given
@@ -17,7 +17,7 @@ VALID_LITERALS = ['hello', 'hi', 'hey']
 class Example(BaseModel):
     uuid: str
     ex_Literal: Literal['hello', 'hi', 'hey']
-    ex_list_any: List[Any]
+    ex_list_any: list[Any]
     ex_any: Any
     ex_optional: Optional[str]
     ex_union: Union[int, str]

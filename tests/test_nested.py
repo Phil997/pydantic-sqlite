@@ -1,4 +1,3 @@
-from typing import List
 from uuid import uuid4
 
 from pydantic import BaseModel, field_validator
@@ -31,7 +30,7 @@ class World(BaseModel):
 
 class Example3(BaseModel):
     uuid: str
-    data: List[Hello]
+    data: list[Hello]
 
     @field_validator('data', mode="before")
     def validate(cls, v):
