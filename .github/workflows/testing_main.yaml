@@ -11,18 +11,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: install poetry
-        run: |
-          pip install poetry==2.2.1
-          poetry config virtualenvs.in-project true
-      - uses: actions/setup-python@v6
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v7
         with:
-          python-version: '3.13'
-      - run: poetry install
+          python-version: 3.13
+      - run: uv sync
 
-      - run: poetry run pytest --cov=pydantic_sqlite/ --cov-report term-missing --cov-branch  --cov-report xml:coverage/coverage.xml
+      - run: uv run pytest --cov=pydantic_sqlite/ --cov-report term-missing --cov-branch  --cov-report xml:coverage/coverage.xml
 
-      - run: poetry run coverage xml
+      - run: uv run coverage xml
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
