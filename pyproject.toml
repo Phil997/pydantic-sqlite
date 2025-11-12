@@ -1,6 +1,6 @@
 [project]
 name = "pydantic_sqlite"
-version = "0.4.0"
+version = "0.5.0"
 description = "Simple package for storing pydantic BaseModels in an in-memory SQLite database."
 authors = [{ name = "Philipp Jaschke" }]
 requires-python = ">=3.10"
