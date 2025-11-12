@@ -1,6 +1,6 @@
 # pydantic-sqlite  <!-- omit in toc -->
 
-![Python](https://img.shields.io/badge/python-3.8%20|%203.9%20|%203.10%20|%203.11%20|%203.12%20|%203.13-blue?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12%20|%203.13-blue?logo=python&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)
 [![codecov](https://codecov.io/github/Phil997/pydantic-sqlite/graph/badge.svg?token=MCCXX7XF9V)](https://codecov.io/github/Phil997/pydantic-sqlite)
 
@@ -149,7 +149,7 @@ for y in db("Persons", where='name= :name', where_args={'name': 'Alice'}):
 This example demonstrates how to handle nested models where each table uses a different primary key, and how to manage foreign key relationships between them. Here, a `CarRegistration` contains a `Person` and a `Car`, and the `Car` itself contains a list of `Wheel` objects. Each model has its own unique primary key, and the relationships are established using the `foreign_tables` argument.
 
 ```python
-from typing import List
+from typing import list
 from pydantic import BaseModel
 from pydantic_sqlite import DataBase
 
@@ -164,7 +164,7 @@ class Wheel(BaseModel):
 class Car(BaseModel):
     series_number: str
     model: str
-    wheels: List[Wheel]
+    wheels: list[Wheel]
 
 class CarRegistration(BaseModel):
     id: str

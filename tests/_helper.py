@@ -1,5 +1,3 @@
-from typing import List
-
 from pydantic import BaseModel
 
 LENGTH = 10
@@ -41,7 +39,7 @@ class Car(BaseModel):
 
 class Garage(BaseModel):
     uuid: str
-    cars: List[Car]
+    cars: list[Car]
 
 
 class CarRegistration(BaseModel):

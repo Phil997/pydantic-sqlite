@@ -1,6 +1,6 @@
 from datetime import datetime
 from random import choice
-from typing import List, Optional
+from typing import Optional
 from uuid import uuid4
 
 import pytest
@@ -23,7 +23,7 @@ class Example(BaseModel):
     ex_int: int
     ex_float: float
     ex_bool: bool
-    ex_list: List[str]
+    ex_list: list[str]
     ex_date: Optional[datetime] = None
 
 
