@@ -159,12 +159,12 @@ class DataBase:
             return db_filename
 
     def add(  # noqa: C901
-        self,
-        tablename: str,
-        model: BaseModel,
-        foreign_tables: dict = dict(),
-        update_nested_models: bool = True,
-        pk: str = "uuid"
+            self,
+            tablename: str,
+            model: BaseModel,
+            foreign_tables: dict = None,
+            update_nested_models: bool = True,
+            pk: str = "uuid"
     ) -> None:
         """
         Adds a new model to the specified table. Handles nested models and foreign keys.
@@ -176,6 +176,9 @@ class DataBase:
             update_nested_models (bool, optional): Whether to update nested models if they already exist.
             pk (str, optional): The primary key field name. Defaults to "uuid".
         """
+        if foreign_tables is None:
+            foreign_tables = dict()
+
         # unkown Tablename -> means new Table -> update the table_basemodel_ref list
         if not isinstance(model, BaseModel):
             raise TypeError("Only pydantic BaseModels can be added to the database")
