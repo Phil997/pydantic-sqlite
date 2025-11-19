@@ -155,3 +155,57 @@ def test_persistent_db_save(persistent_db):
 
     # Close the database connection before the test ends
     persistent_db._db.conn.close()
+
+
+def test_init_hydrates_existing_metadata(tmp_path: Path):
+    """
+    Regression test: Verifies that initializing a DataBase with an existing
+    file correctly loads metadata (fixes the 'Amnesia' bug).
+    """
+    db_path = tmp_path / "persistence_check.db"
+
+    # 1. Initialize first session and save data
+    db1 = DataBase(db_path)
+    person_data = Person(uuid=str(uuid4()), name="Persistence User")
+    db1.add(TEST_TABLE_NAME, person_data)
+
+    # 2. Initialize second session from the same file
+    # Prior to the fix, this would have empty _basemodels and fail on access
+    db2 = DataBase(db_path)
+
+    # 3. Verify access
+    # This accesses ._basemodels[TEST_TABLE_NAME] internally
+    results = list(db2(TEST_TABLE_NAME))
+
+    assert len(results) == 1
+    assert results[0].name == "Persistence User"
+    assert isinstance(results[0], Person)
+    assert TEST_TABLE_NAME in db2._basemodels
+
+
+def test_metadata_pk_collision_fix(tmp_path: Path):
+    """
+    Regression test: Verifies that multiple tables using the same Pydantic model
+    are persisted correctly. (Fixes the bug where __basemodels__ PK was 'modulename'
+    instead of 'table', causing overwrites).
+    """
+    db_path = tmp_path / "collision_check.db"
+    db = DataBase(db_path)
+
+    p1 = Person(uuid="1", name="Admin")
+    p2 = Person(uuid="2", name="User")
+
+    # Add same model type to two different tables
+    db.add("Admins", p1)
+    db.add("Users", p2)
+
+    # Reload database
+    db_new = DataBase(db_path)
+
+    # Both tables should exist in metadata
+    assert "Admins" in db_new._basemodels
+    assert "Users" in db_new._basemodels
+
+    # Data should be retrievable from both
+    assert list(db_new("Admins"))[0].name == "Admin"
+    assert list(db_new("Users"))[0].name == "User"
