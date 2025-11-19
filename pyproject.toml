@@ -1,6 +1,6 @@
 [project]
 name = "pydantic_sqlite"
-version = "0.5.0"
+version = "0.6.0"
 description = "Simple package for storing pydantic BaseModels in an in-memory SQLite database."
 authors = [{ name = "Philipp Jaschke" }]
 requires-python = ">=3.10"
@@ -21,9 +21,11 @@ Repository = "https://github.com/Phil997/pydantic-sqlite"
 
 [tool.hatch.build.targets.sdist]
 include = ["LICENSE"]
+packages = ["pydantic_sqlite"]
 
 [tool.hatch.build.targets.wheel]
-include = ["LICENSE"]
+packages = ["pydantic_sqlite"]
+include = ["LICENSE"]  # optional: extra files you want in addition
 
 [dependency-groups]
 dev = [
