@@ -49,7 +49,7 @@ class TableBaseModel:
         """
         self.table = table
         self.basemodel_cls = basemodel_cls
-        self.modulename = str(basemodel_cls).split("<class '")[1].split("'>")[0]
+        self.modulename = f"{basemodel_cls.__module__}.{basemodel_cls.__name__}"
         self.pks = pks
 
     def data(self) -> dict[str, Union[str, list[str]]]:
@@ -96,6 +96,36 @@ class DataBase:
         else:
             self._db = _Database(filename_or_conn, **kwargs)
 
+        if "__basemodels__" in self._db.table_names():
+            self._load_internal_metadata()
+
+    def _load_internal_metadata(self) -> None:
+        """
+        Internal helper: Reads the __basemodels__ table and re-imports the Pydantic classes
+        to populate _basemodels and _primary_keys.
+        """
+        try:
+            for model in self._db["__basemodels__"].rows:
+                parts = model["modulename"].split(".")
+                classname = parts[-1]
+                modulename = ".".join(parts[:-1])
+
+                try:
+                    my_module = importlib.import_module(modulename)
+                    basemodel_cls = getattr(my_module, classname)
+
+                    # Register in memory without persisting to DB again
+                    self._create_new_table(
+                        tablename=model["table"],
+                        basemodel_cls=basemodel_cls,
+                        pk=json.loads(model["pks"])[0],
+                        persist=False
+                    )
+                except (ModuleNotFoundError, AttributeError) as e:
+                    logging.warning(f"Could not reload model for table '{model['table']}': {e}")
+        except Exception as e:
+            logging.error(f"Failed to load internal metadata: {e}")
+
     def __call__(self, tablename: str, **kwargs) -> Generator[BaseModel, None, None]:
         """
         Yields every model in the table. They can be filterd by passing **kwargs.
@@ -111,7 +141,8 @@ class DataBase:
             basemodel = self._basemodels[tablename]
             foreign_refs = {key.column: key.other_table for key in self._db[tablename].foreign_keys}
         except KeyError:
-            raise KeyError(f"Can't find table '{tablename}' in Database") from None
+            raise KeyError(
+                f"Can't find table '{tablename}' in Database. Available: {list(self._basemodels.keys())}") from None
 
         for row in self._db[tablename].rows_where(**kwargs):
             yield self._build_basemodel_from_dict(basemodel, row, foreign_refs, self._primary_keys[tablename])
@@ -128,12 +159,12 @@ class DataBase:
             return db_filename
 
     def add(  # noqa: C901
-        self,
-        tablename: str,
-        model: BaseModel,
-        foreign_tables: dict = dict(),
-        update_nested_models: bool = True,
-        pk: str = "uuid"
+            self,
+            tablename: str,
+            model: BaseModel,
+            foreign_tables: dict = None,
+            update_nested_models: bool = True,
+            pk: str = "uuid"
     ) -> None:
         """
         Adds a new model to the specified table. Handles nested models and foreign keys.
@@ -145,6 +176,9 @@ class DataBase:
             update_nested_models (bool, optional): Whether to update nested models if they already exist.
             pk (str, optional): The primary key field name. Defaults to "uuid".
         """
+        if foreign_tables is None:
+            foreign_tables = dict()
+
         # unkown Tablename -> means new Table -> update the table_basemodel_ref list
         if not isinstance(model, BaseModel):
             raise TypeError("Only pydantic BaseModels can be added to the database")
@@ -308,15 +342,7 @@ class DataBase:
         self._db.conn.executescript(query)
         file_db.close()
 
-        for model in self._db["__basemodels__"].rows:
-            classname = model["modulename"].split(".")[-1]
-            modulename = ".".join(model["modulename"].split(".")[:-1])
-            my_module = importlib.import_module(modulename)
-            self._create_new_table(
-                tablename=model["table"],
-                basemodel_cls=getattr(my_module, classname),
-                pk=json.loads(model["pks"])[0],
-            )
+        self._load_internal_metadata()
 
     def save(self, filename: Union[str, Path], backup: bool = True, backup_suffix: str = ".backup") -> None:
         """
@@ -362,7 +388,7 @@ class DataBase:
                 logging.warning(f"saved the backup file under '{backup_file}'")
             raise
 
-    def _create_new_table(self, tablename: str, basemodel_cls: ModelMetaclass, pk: str) -> None:
+    def _create_new_table(self, tablename: str, basemodel_cls: ModelMetaclass, pk: str, persist: bool = True) -> None:
         """
         Registers the table metadata, including the table name, BaseModel class, and primary key,
         in the internal dictionaries and persists the metadata in the '__basemodels__' table.
@@ -371,11 +397,14 @@ class DataBase:
             tablename (str): The name of the table to create.
             basemodel_cls (ModelMetaclass): The Pydantic BaseModel class associated with the table.
             pk (str): The primary key field name for the table.
+            persist (bool): Whether to write the metadata to the DB. Defaults to True.
         """
         _m = TableBaseModel(table=tablename, basemodel_cls=basemodel_cls, pks=[pk])
         self._basemodels.update({tablename: _m})
         self._primary_keys.update({tablename: pk})
-        self._db["__basemodels__"].upsert(_m.data(), pk="modulename")
+
+        if persist:
+            self._db["__basemodels__"].upsert(_m.data(), pk="table")
 
     def _build_basemodel_from_dict(
         self, tablemodel: TableBaseModel, row: dict, foreign_refs: dict, pk: str
@@ -395,10 +424,13 @@ class DataBase:
         # returns a subclass object of type BaseModel which is build out of
         # class basemodel.basemodel_cls and the data out of the dict
         field_models: dict[str, FieldInfo] = tablemodel.basemodel_cls.model_fields
-        tablemodel.basemodel_cls
+
         d = {}
 
         for field_name, field_value in row.items():
+            if field_name not in field_models:
+                continue
+
             info = field_models[field_name]
 
             if (field_name in foreign_refs.keys()):  # the column contains another subclass of BaseModel
