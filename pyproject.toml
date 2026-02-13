@@ -17,6 +17,7 @@ dependencies = [
 ]
 
 [project.urls]
+Documentation = "https://phil997.github.io/pydantic-sqlite/"
 Repository = "https://github.com/Phil997/pydantic-sqlite"
 
 [tool.hatch.build.targets.sdist]
@@ -35,7 +36,10 @@ dev = [
     "hypothesis (>=6.100.0)",
     "testfixtures (>=8.1.0)",
     "pytest-cov (<=6)"
-,
+]
+documentation = [
+    "mkdocs>=1.6.1",
+    "pymdown-extensions>=10.20.1",
 ]
 
 [build-system]
