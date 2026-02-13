@@ -17,6 +17,7 @@ dependencies = [
 ]
 
 [project.urls]
+Documentation = "https://phil997.github.io/pydantic-sqlite/"
 Repository = "https://github.com/Phil997/pydantic-sqlite"
 
 [tool.hatch.build.targets.sdist]
