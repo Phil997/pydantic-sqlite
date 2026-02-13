@@ -21,3 +21,9 @@ markdown_extensions:
   - tables
   - toc:
       toc_depth: 2
+
+extra_css:
+  - css/copy-code.css
+
+extra_javascript:
+  - js/copy-code.js
