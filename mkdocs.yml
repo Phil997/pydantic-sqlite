@@ -1,0 +1,23 @@
+site_name: pydantic-sqlite
+site_description: Store Pydantic BaseModels in SQLite
+site_author: Philipp Jaschke
+site_url: https://phil997.github.io/pydantic-sqlite/
+repo_url: https://github.com/Phil997/pydantic-sqlite
+repo_name: pydantic-sqlite
+
+theme:
+  name: readthedocs
+
+nav:
+  - Home: index.md
+  - Basic Usage: basic-usage.md
+  - Advanced Usage: advanced-usage.md
+  - Examples: examples.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      use_pygments: true
+  - pymdownx.superfences
+  - tables
+  - toc:
+      toc_depth: 2

@@ -1,0 +1,187 @@
+# Advanced Usage
+
+## Nested Models with Foreign Keys
+
+Store models that contain other Pydantic models by using foreign key relationships:
+
+```python
+from pydantic import BaseModel
+from pydantic_sqlite import DataBase
+
+class Address(BaseModel):
+    uuid: str
+    street: str
+    city: str
+    country: str
+
+class Person(BaseModel):
+    uuid: str
+    name: str
+    address: Address
+
+db = DataBase()
+
+# First, add the related Address to its table
+address = Address(uuid="addr-1", street="123 Main St", city="Berlin", country="Germany")
+db.add("Addresses", address)
+
+# Then add Person with foreign_tables parameter
+person = Person(uuid="person-1", name="Alice", address=address)
+db.add("Persons", person, foreign_tables={"address": "Addresses"})
+
+# Retrieve - the Address is automatically reconstructed
+for p in db("Persons"):
+    print(f"{p.name} lives in {p.address.city}")
+```
+
+## Custom Primary Keys
+
+By default, pydantic-sqlite looks for a `uuid` field as the primary key. You can use any field as the primary key:
+
+```python
+from pydantic import BaseModel
+from pydantic_sqlite import DataBase
+
+class Car(BaseModel):
+    vin: str  # Vehicle Identification Number
+    model: str
+    year: int
+
+db = DataBase()
+
+car = Car(vin="12345ABCDE", model="Tesla Model 3", year=2024)
+
+# Specify the primary key with pk parameter
+db.add("Cars", car, pk="vin")
+
+# Query and retrieve
+for car in db("Cars"):
+    print(f"{car.year} {car.model}")
+```
+
+## Multiple Levels of Nesting
+
+You can nest models at multiple levels, each with its own primary key:
+
+```python
+from pydantic import BaseModel
+from pydantic_sqlite import DataBase
+
+class Wheel(BaseModel):
+    batch_id: str
+    diameter: int
+
+class Car(BaseModel):
+    series_number: str
+    model: str
+    wheels: list[Wheel]
+
+class Garage(BaseModel):
+    garage_id: str
+    owner: str
+    car: Car
+
+db = DataBase()
+
+# Create wheels
+wheels = [
+    Wheel(batch_id="W1", diameter=18),
+    Wheel(batch_id="W2", diameter=18),
+    Wheel(batch_id="W3", diameter=18),
+    Wheel(batch_id="W4", diameter=18),
+]
+
+# Add wheels to database
+for wheel in wheels:
+    db.add("Wheels", wheel, pk="batch_id")
+
+# Create car with wheels
+car = Car(series_number="SN123", model="Model S", wheels=wheels)
+db.add("Cars", car, pk="series_number", foreign_tables={"wheels": "Wheels"})
+
+# Create garage with car
+garage = Garage(garage_id="G1", owner="Alice", car=car)
+db.add("Garages", garage, pk="garage_id", foreign_tables={"car": "Cars"})
+
+# Retrieve - full object hierarchy is reconstructed
+for g in db("Garages"):
+    print(f"{g.owner}'s {g.car.model} has {len(g.car.wheels)} wheels")
+```
+
+## SQConfig: Custom Object Conversion
+
+For models you don't want to store in separate tables, use `SQConfig` with the `special_insert` flag to store them as strings:
+
+```python
+from pydantic import BaseModel, field_validator
+from pydantic_sqlite import DataBase
+from uuid import uuid4
+
+class Address(BaseModel):
+    street: str
+    city: str
+
+    class SQConfig:
+        special_insert: bool = True
+
+        def convert(obj):
+            return f"{obj.street},{obj.city}"
+
+class Person(BaseModel):
+    uuid: str
+    name: str
+    address: Address
+
+    @field_validator('address', mode="before")
+    def validate_address(cls, v):
+        if isinstance(v, Address):
+            return v
+        street, city = v.split(',')
+        return Address(street=street, city=city)
+
+db = DataBase()
+
+person = Person(
+    uuid=str(uuid4()),
+    name="Bob",
+    address=Address(street="456 Oak Ave", city="Hamburg")
+)
+db.add("Persons", person)
+
+# The address is stored as a string, not a foreign key
+# But when retrieved, it's reconstructed as an Address object
+for p in db("Persons"):
+    print(f"{p.name}: {p.address.city}")
+```
+
+## FailSafeDataBase: Error Recovery
+
+The `FailSafeDataBase` context manager automatically creates a database snapshot if an exception occurs:
+
+```python
+from pydantic_sqlite import FailSafeDataBase
+from pydantic import BaseModel
+from uuid import uuid4
+
+class User(BaseModel):
+    uuid: str
+    username: str
+
+with FailSafeDataBase("users.db", snapshot_suffix="_snapshot.db") as db:
+    user1 = User(uuid=str(uuid4()), username="alice")
+    db.add("Users", user1)
+    
+    user2 = User(uuid=str(uuid4()), username="bob")
+    db.add("Users", user2)
+    
+    # If an exception occurs here, a snapshot is automatically saved
+    # as users_snapshot.db
+    if True:  # Some error condition
+        raise Exception("Something went wrong!")
+```
+
+After running this, you'll have:
+- `users.db` - The original database
+- `users_snapshot.db` - A snapshot with the data as it was before the exception
+
+If you run the script again and an error occurs, the snapshot file is incremented to `users_snapshot(1).db`.
