@@ -145,6 +145,9 @@ class DataBase:
             foreign_tables (dict, optional): A dictionary of foreign tables and their mappings.
             update_nested_models (bool, optional): Whether to update nested models if they already exist.
             pk (str, optional): The primary key field name. Defaults to "uuid".
+
+        Note:
+            Fields of type `dict[str, BaseModel]` are stored as a JSON mapping of `{key: primary_key}` in the column
         """
         # unkown Tablename -> means new Table -> update the table_basemodel_ref list
         if not isinstance(model, BaseModel):
@@ -191,6 +194,22 @@ class DataBase:
                     data_to_save[field_name] = [getattr(m, _foreign_pk) for m in field_value]
                 else:
                     data_to_save[field_name] = [str(m) for m in field_value]
+
+            elif get_origin(field_info.annotation) is dict:
+                args = typing.get_args(field_info.annotation)
+                if inspect.isclass(args[1]) and issubclass(args[1], BaseModel):
+                    _foreign_table_name = self._get_foreign_table_name(field_name, foreign_tables)
+                    _foreign_pk = self._primary_keys[_foreign_table_name]
+                    foreign_keys.append((field_name, _foreign_table_name, _foreign_pk))
+
+                    data_to_save[field_name] = json.dumps({
+                        key: self._upsert_model_in_foreign_table(
+                            value, _foreign_table_name, update_nested_models, pk=_foreign_pk,
+                        )
+                        for key, value in field_value.items()
+                    })
+                else:
+                    data_to_save[field_name] = field_value
 
             elif inspect.isclass(field_info.annotation) and issubclass(field_info.annotation, BaseModel):
                 # the model has got a field which is of type BaseModel, so this filed must be in a foreign table
@@ -356,7 +375,7 @@ class DataBase:
         self._db.conn.executescript(query)
         file_db.close()
 
-        for model in self._db["__basemodels__"].rows:
+        for model in list(self._db["__basemodels__"].rows):
             classname = model["modulename"].split(".")[-1]
             modulename = ".".join(model["modulename"].split(".")[:-1])
             my_module = importlib.import_module(modulename)
@@ -455,11 +474,18 @@ class DataBase:
                         self.model_from_table(foreign_refs[field_name], val)
                         for val in json.loads(field_value)
                     ]
+                elif get_origin(info.annotation) == dict:
+                    data = {
+                        key: self.model_from_table(foreign_refs[field_name], val)
+                        for key, val in json.loads(field_value).items()
+                    }
                 else:
                     data = self.model_from_table(foreign_refs[field_name], field_value)
             else:
                 if get_origin(info.annotation) == list:
                     data = json.loads(field_value)
+                elif get_origin(info.annotation) == dict:
+                    data = None if field_value is None else json.loads(field_value)
                 elif get_origin(info.annotation) == Union:
                     data = convert_value_into_union_types(info.annotation, field_value)
                 else:
