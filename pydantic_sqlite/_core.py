@@ -16,6 +16,7 @@ from pydantic.fields import FieldInfo
 from sqlite_utils import Database as _Database
 
 from ._misc import convert_value_into_union_types
+from ._utils import row_foreign_ids
 
 SPECIALTYPE = [Any, Literal, Union]
 
@@ -268,6 +269,53 @@ class DataBase:
         entries = [row for row in self._db[tablename].rows_where(f"{_pk} = ?", [pk_value])]
         return bool(entries)
 
+    def delete(self, tablename: str, pk_value: Union[str, BaseModel], cascade: bool = False) -> bool:
+        """
+        Deletes a row from the table by primary key.
+
+        Args:
+            tablename (str): Name of the table to delete from.
+            pk_value (str | BaseModel): The value of the primary key to delete, or a BaseModel instance.
+            cascade (bool, optional): If True, also deletes exclusively referenced nested rows
+              in foreign tables. Defaults to False.
+
+        Returns:
+            bool: True if a row was deleted, False if no row matched the primary key.
+        """
+        if tablename not in self._basemodels:
+            raise KeyError(f"Can't find table '{tablename}' in Database")
+        if isinstance(pk_value, BaseModel):
+            pk_value = getattr(pk_value, self._primary_keys[tablename])
+        if not self.model_in_table(tablename, pk_value):
+            return False
+        if cascade:
+            self._delete_with_cascade(tablename, pk_value)
+        else:
+            self._db[tablename].delete(pk_value)
+        return True
+
+    def delete_where(self, tablename: str, where: str, where_args: dict | None = None, cascade: bool = False) -> int:
+        """
+        Deletes all rows in the table matching the given where clause.
+
+        Args:
+            tablename (str): The name of the table.
+            where (str): SQL where fragment to use, e.g. 'name = :name'.
+            where_args (dict, optional): Parameters for the where clause. Defaults to None.
+            cascade (bool, optional): If True, also deletes exclusively referenced nested rows
+              in foreign tables. Defaults to False.
+
+        Returns:
+            int: The number of deleted rows.
+        """
+        if tablename not in self._basemodels:
+            raise KeyError(f"Can't find table '{tablename}' in Database")
+        _pk = self._primary_keys[tablename]
+        _rows = list(self._db[tablename].rows_where(where, where_args))
+        for _row in _rows:
+            self.delete(tablename, _row[_pk], cascade=cascade)
+        return len(_rows)
+
     def model_from_table(self, tablename: str, pk_value: str) -> typing.Any:
         """
         Retrieve a BaseModel instance from the table by primary key.
@@ -491,3 +539,49 @@ class DataBase:
             if not special_possible(obj_class := field_value.__class__):
                 return False
             return obj_class.SQConfig.convert(field_value)
+
+    def _count_foreign_references(self, tablename: str, pk_value: str) -> int:
+        """
+        Counts how often a primary key of the given table is referenced by foreign keys of other tables.
+
+        Args:
+            tablename (str): The name of the referenced table.
+            pk_value (str): The primary key value of the referenced row.
+
+        Returns:
+            int: The number of references to the primary key.
+        """
+        count = 0
+        for _tablename in self._basemodels:
+            for _fk in self._db[_tablename].foreign_keys:
+                if _fk.other_table != tablename:
+                    continue
+                for _row in self._db[_tablename].rows:
+                    if pk_value in row_foreign_ids(_row, _fk.column):
+                        count += 1
+        return count
+
+    def _delete_with_cascade(self, tablename: str, pk_value: str, visited: set | None = None) -> None:
+        """
+        Deletes a row and all nested rows in foreign tables that are exclusively referenced by it.
+
+        Args:
+            tablename (str): The name of the table.
+            pk_value (str): The primary key value of the row to delete.
+            visited (set, optional): Internal set of already processed (tablename, pk_value) tuples.
+        """
+        if visited is None:
+            visited = set()
+        if (tablename, pk_value) in visited:
+            return
+        visited.add((tablename, pk_value))
+        row = dict(self._db[tablename].get(pk_value))
+        for _fk in self._db[tablename].foreign_keys:
+            if _fk.other_table not in self._basemodels:
+                continue
+            for child_id in row_foreign_ids(row, _fk.column):
+                if not self.model_in_table(_fk.other_table, child_id):
+                    continue
+                if self._count_foreign_references(_fk.other_table, child_id) <= 1:
+                    self._delete_with_cascade(_fk.other_table, child_id, visited)
+        self._db[tablename].delete(pk_value)

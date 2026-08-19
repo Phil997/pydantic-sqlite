@@ -156,6 +156,47 @@ if user:
     print(f"Found: {user.username}")
 ```
 
+## Deleting Data
+
+Remove rows from the database with `delete` and `delete_where`:
+
+```python
+from pydantic import BaseModel
+from pydantic_sqlite import DataBase
+
+class Product(BaseModel):
+    uuid: str
+    name: str
+    in_stock: bool
+
+db = DataBase()
+
+laptop = Product(uuid="prod-001", name="Laptop", in_stock=True)
+db.add("Products", laptop)
+db.add("Products", Product(uuid="prod-002", name="Mouse", in_stock=True))
+db.add("Products", Product(uuid="prod-003", name="Keyboard", in_stock=False))
+
+# Delete all rows matching a condition -> number of removed rows
+removed = db.delete_where("Products", where="in_stock = :stock", where_args={"stock": False})
+print(removed)  # 1 (the Keyboard)
+
+# Delete a single row by primary key -> True if the row was deleted
+deleted = db.delete("Products", "prod-001")
+print(deleted)  # True
+
+# Delete by model instance (the primary key is extracted automatically)
+deleted = db.delete("Products", laptop)
+print(deleted)  # False - the Laptop row was already deleted above
+
+# Un-deleted rows are still there
+for product in db("Products"):
+    print(product.name)  # Mouse
+```
+
+`delete` and `delete_where` raise a `KeyError` if the table does not exist.
+
+Note: deleting only removes rows from the specified table. Rows in foreign tables that are referenced by nested models are kept. See [Cascading Deletes](advanced-usage.md#cascading-deletes) to delete nested rows as well.
+
 ## Persisting to Disk
 
 By default, `DataBase()` creates an in-memory database. To save data to a file:
