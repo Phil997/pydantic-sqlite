@@ -2,7 +2,7 @@ import pytest
 
 from pydantic_sqlite import DataBase
 
-from ._helper import Car, Employee, Garage, Person
+from ._helper import Car, Employee, Garage, Person, Portfolio, Position
 
 
 def _count_rows(db: DataBase, tablename: str) -> int:
@@ -146,6 +146,38 @@ def test_delete_cascade_nested_list():
     assert _count_rows(db, "Garages") == 0
     assert _count_rows(db, "Cars") == 0
     assert _column_values(db, "Cars", "series_number") == []
+
+
+def test_delete_cascade_nested_dict():
+    db = DataBase()
+    position1 = Position(symbol="AAPL", quantity=4)
+    position2 = Position(symbol="MSFT", quantity=8)
+    portfolio = Portfolio(strategy_id="p1", positions={"AAPL": position1, "MSFT": position2})
+    db.add("Positions", position1, pk="symbol")
+    db.add("Positions", position2, pk="symbol")
+    db.add("Portfolios", portfolio, pk="strategy_id", foreign_tables={"positions": "Positions"})
+
+    assert db.delete("Portfolios", "p1", cascade=True) is True
+    assert _count_rows(db, "Portfolios") == 0
+    assert _count_rows(db, "Positions") == 0
+    assert _column_values(db, "Positions", "symbol") == []
+
+
+def test_delete_cascade_nested_dict_shared_reference():
+    db = DataBase()
+    position = Position(symbol="AAPL", quantity=4)
+    portfolio1 = Portfolio(strategy_id="p1", positions={"AAPL": position})
+    portfolio2 = Portfolio(strategy_id="p2", positions={"AAPL": position})
+    db.add("Positions", position, pk="symbol")
+    db.add("Portfolios", portfolio1, pk="strategy_id", foreign_tables={"positions": "Positions"})
+    db.add("Portfolios", portfolio2, pk="strategy_id", foreign_tables={"positions": "Positions"})
+
+    assert db.delete("Portfolios", "p1", cascade=True) is True
+    assert _count_rows(db, "Positions") == 1
+    assert _column_values(db, "Positions", "symbol") == ["AAPL"]
+
+    assert db.delete("Portfolios", "p2", cascade=True) is True
+    assert _count_rows(db, "Positions") == 0
 
 
 def test_delete_where_cascade():

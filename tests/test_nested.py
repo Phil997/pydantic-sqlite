@@ -1,10 +1,12 @@
+from decimal import Decimal
 from uuid import uuid4
 
+import pytest
 from pydantic import BaseModel, field_validator
 
 from pydantic_sqlite import DataBase
 
-from ._helper import Car, CarRegistration, Employee, Garage, Person, Team
+from ._helper import Car, CarRegistration, Employee, Garage, Person, Portfolio, Position, Team
 
 
 class Hello(BaseModel):
@@ -153,3 +155,98 @@ def test_alternative_primary_key_mix_obj():
     assert next(db("Cars")) == car1
     assert next(db("Persons")) == person
     assert next(db("CarRegistrations")) == owner
+
+
+def test_dict_nested_roundtrip():
+    db = DataBase()
+    position = Position(symbol="AAPL", quantity=4, avg_cost=Decimal("25.5"))
+    portfolio = Portfolio(strategy_id="m", positions={"AAPL": position})
+
+    db.add("Positions", position, pk='symbol')
+    db.add("Portfolios", portfolio, pk='strategy_id', foreign_tables={"positions": "Positions"})
+
+    record = db.model_from_table("Portfolios", "m")
+    assert record.positions["AAPL"] == position
+    assert record.positions["AAPL"].avg_cost == Decimal("25.5")
+
+
+def test_dict_nested_arbitrary_keys():
+    db = DataBase()
+    position = Position(symbol="AAPL", quantity=4)
+    portfolio = Portfolio(strategy_id="m", positions={"main": position})
+
+    db.add("Positions", position, pk='symbol')
+    db.add("Portfolios", portfolio, pk='strategy_id', foreign_tables={"positions": "Positions"})
+
+    record = db.model_from_table("Portfolios", "m")
+    assert list(record.positions.keys()) == ["main"]
+    assert record.positions["main"].symbol == "AAPL"
+
+
+def test_dict_nested_empty():
+    db = DataBase()
+    db.add("Positions", Position(symbol="AAPL", quantity=4), pk='symbol')
+    db.add(
+        "Portfolios",
+        Portfolio(strategy_id="m"),
+        pk='strategy_id',
+        foreign_tables={"positions": "Positions"},
+    )
+
+    assert db.model_from_table("Portfolios", "m").positions == {}
+
+
+def test_dict_nested_update_nested_model():
+    db = DataBase()
+    position = Position(symbol="AAPL", quantity=4)
+    portfolio = Portfolio(strategy_id="m", positions={"AAPL": position})
+
+    db.add("Positions", position, pk='symbol')
+    db.add("Portfolios", portfolio, pk='strategy_id', foreign_tables={"positions": "Positions"})
+
+    position.quantity = 10
+    db.add("Portfolios", portfolio, pk='strategy_id', foreign_tables={"positions": "Positions"})
+
+    assert db.model_from_table("Portfolios", "m").positions["AAPL"].quantity == 10
+
+
+def test_dict_nested_missing_foreign_table():
+    db = DataBase()
+    portfolio = Portfolio(strategy_id="m", positions={"AAPL": Position(symbol="AAPL", quantity=4)})
+
+    with pytest.raises(KeyError, match="detect field of Type BaseModel, but can not find 'positions'"):
+        db.add("Portfolios", portfolio, pk='strategy_id')
+
+
+def test_dict_nested_save_and_load(tmp_path):
+    db = DataBase()
+    position = Position(symbol="AAPL", quantity=4, avg_cost=Decimal("25.5"))
+    portfolio = Portfolio(strategy_id="m", positions={"AAPL": position})
+
+    db.add("Positions", position, pk='symbol')
+    db.add("Portfolios", portfolio, pk='strategy_id', foreign_tables={"positions": "Positions"})
+
+    db.save(str(tmp_path / "test.db"))
+
+    db2 = DataBase()
+    db2.load(str(tmp_path / "test.db"))
+
+    record = db2.model_from_table("Portfolios", "m")
+    assert record.positions["AAPL"] == position
+    assert record.positions["AAPL"].avg_cost == Decimal("25.5")
+
+
+class ServerConfig(BaseModel):
+    uuid: str
+    settings: dict[str, str] = {}
+    ports: dict[str, int] = {}
+
+
+def test_dict_primitives_roundtrip():
+    db = DataBase()
+    config = ServerConfig(uuid="1", settings={"host": "localhost"}, ports={"web": 8080})
+    db.add("ServerConfigs", config)
+
+    result = db.model_from_table("ServerConfigs", "1")
+    assert result.settings == {"host": "localhost"}
+    assert result.ports == {"web": 8080}
