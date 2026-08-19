@@ -108,6 +108,68 @@ for g in db("Garages"):
     print(f"{g.owner}'s {g.car.model} has {len(g.car.wheels)} wheels")
 ```
 
+## Cascading Deletes
+
+By default, `delete` and `delete_where` only remove rows from the specified table. Rows in foreign tables that are referenced by nested models stay untouched:
+
+```python
+from pydantic import BaseModel
+from pydantic_sqlite import DataBase
+
+class Address(BaseModel):
+    uuid: str
+    street: str
+    city: str
+
+class Person(BaseModel):
+    uuid: str
+    name: str
+    address: Address
+
+db = DataBase()
+address = Address(uuid="addr-1", street="123 Main St", city="Berlin")
+person = Person(uuid="person-1", name="Alice", address=address)
+db.add("Addresses", address)
+db.add("Persons", person, foreign_tables={"address": "Addresses"})
+
+# Default: only the Person row is deleted
+db.delete("Persons", "person-1")
+# -> the Address 'addr-1' remains in the 'Addresses' table
+```
+
+Pass `cascade=True` to also delete nested rows in foreign tables. Only rows that are **exclusively** referenced by the deleted row(s) are removed:
+
+```python
+db = DataBase()
+address = Address(uuid="addr-1", street="123 Main St", city="Berlin")
+db.add("Addresses", address)
+db.add("Persons", Person(uuid="person-1", name="Alice", address=address), foreign_tables={"address": "Addresses"})
+
+db.delete("Persons", "person-1", cascade=True)
+# -> the Address 'addr-1' is deleted as well, because no other row references it
+```
+
+Nested rows that are shared between multiple rows are kept:
+
+```python
+db = DataBase()
+address = Address(uuid="addr-1", street="123 Main St", city="Berlin")
+db.add("Addresses", address)
+db.add("Persons", Person(uuid="person-1", name="Alice", address=address), foreign_tables={"address": "Addresses"})
+db.add("Persons", Person(uuid="person-2", name="Bob", address=address), foreign_tables={"address": "Addresses"})
+
+db.delete("Persons", "person-1", cascade=True)
+# -> the Address stays, because 'person-2' still references it
+```
+
+`delete_where` supports the same `cascade` parameter:
+
+```python
+db.delete_where("Persons", where="name = :name", where_args={"name": "Alice"}, cascade=True)
+```
+
+Cascading deletes are recursive and also work with `list` fields, e.g. a `Garage` containing `cars: list[Car]` — deleting the garage with `cascade=True` removes the exclusively referenced cars as well.
+
 ## SQConfig: Custom Object Conversion
 
 For models you don't want to store in separate tables, use `SQConfig` with the `special_insert` flag to store them as strings:

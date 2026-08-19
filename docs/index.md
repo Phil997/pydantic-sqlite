@@ -12,6 +12,7 @@
 - **Complex Type Handling** - Support for lists, unions, and custom type conversions
 - **Type Safety** - Retrieved objects are fully reconstructed as their original Pydantic models
 - **Simple Query API** - Intuitive interface for adding and querying data
+- **Row Deletion** - Remove single rows by primary key or bulk delete with WHERE clauses
 - **Error Recovery** - Optional `FailSafeDataBase` context manager for automatic snapshots on exceptions
 
 ## Quick Example
@@ -60,8 +61,8 @@ poetry add pydantic-sqlite
 
 ## Documentation
 
-- **[Basic Usage](basic-usage.md)** - Installation, core features and common patterns
-- **[Advanced Usage](advanced-usage.md)** - Nested models, custom configurations, and complex scenarios
+- **[Basic Usage](basic-usage.md)** - Installation, core features and common patterns (add, query, update, delete)
+- **[Advanced Usage](advanced-usage.md)** - Nested models, cascading deletes, custom configurations, and complex scenarios
 - **[Examples](examples.md)** - Complete, runnable code examples
 
 

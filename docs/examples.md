@@ -411,3 +411,56 @@ print(f"\nTotal students: {total}")  # Output: 4
 
 db.save("school.db")
 ```
+
+## Example 7: Deleting Consumed Work-Queue Entries
+
+**What's happening here:**
+
+- The `Settlements` table is used as a one-time ledger: a row is created on the trade date and must be removed once the settlement matures
+- `delete` removes a single row by primary key and returns `True` if the row existed, `False` otherwise
+- `delete_where` removes all matching rows and returns the number of removed rows
+- Re-running the workflow does not double-count matured settlements, because their rows are gone
+
+```python
+from pydantic import BaseModel
+from pydantic_sqlite import DataBase
+
+class Settlement(BaseModel):
+    uuid: str
+    strategy_id: str
+    settlement_date: str
+    cash: float
+
+db = DataBase()
+
+# Pending settlements - the table acts as a queue of not-yet-mature cash flows
+db.add(
+    "Settlements",
+    Settlement(uuid="fill-123", strategy_id="momentum", settlement_date="2026-01-05", cash=1000.0),
+)
+db.add(
+    "Settlements",
+    Settlement(uuid="fill-124", strategy_id="momentum", settlement_date="2026-01-05", cash=500.0),
+)
+db.add(
+    "Settlements",
+    Settlement(uuid="fill-125", strategy_id="index", settlement_date="2026-01-05", cash=250.0),
+)
+
+# Bulk remove all matured momentum settlements -> returns the removed count
+removed = db.delete_where(
+    "Settlements",
+    where="strategy_id = :strategy AND settlement_date <= :date",
+    where_args={"strategy": "momentum", "date": "2026-01-05"},
+)
+print(f"Matured settlements removed: {removed}")  # Output: 2
+
+# Remove the remaining settlement by primary key
+deleted = db.delete("Settlements", "fill-125")
+print(f"Settlement deleted: {deleted}")  # Output: True
+
+# The table is now empty - nothing can be double-counted on a re-run
+print(db.count_entries_in_table("Settlements"))  # Output: 0
+```
+
+Deleting only touches the given table. Pass `cascade=True` to also clean up exclusively referenced nested rows in foreign tables — see [Cascading Deletes](advanced-usage.md#cascading-deletes).
