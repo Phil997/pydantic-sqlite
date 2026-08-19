@@ -1,6 +1,6 @@
 [project]
 name = "pydantic_sqlite"
-version = "0.5.1"
+version = "0.6.0"
 description = "Simple package for storing pydantic BaseModels in an in-memory SQLite database."
 authors = [{ name = "Philipp Jaschke" }]
 requires-python = ">=3.10"
@@ -35,7 +35,7 @@ dev = [
     "pytest (>=8.1.1)",
     "hypothesis (>=6.100.0)",
     "testfixtures (>=8.1.0)",
-    "pytest-cov (<=6)"
+    "pytest-cov>=7",
 ]
 documentation = [
     "mkdocs>=1.6.1",
