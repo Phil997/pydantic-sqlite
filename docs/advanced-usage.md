@@ -170,6 +170,51 @@ db.delete_where("Persons", where="name = :name", where_args={"name": "Alice"}, c
 
 Cascading deletes are recursive and also work with `list` fields, e.g. a `Garage` containing `cars: list[Car]` — deleting the garage with `cascade=True` removes the exclusively referenced cars as well.
 
+## Keyed Nested Collections: `dict[str, BaseModel]`
+
+Models can also contain dictionaries of nested models. The nested models are stored in a foreign table (like `list[BaseModel]`), while the parent row stores a JSON mapping of `{key: primary_key}`. The keys are preserved as-is, so arbitrary labels work:
+
+```python
+from decimal import Decimal
+from pydantic import BaseModel
+from pydantic_sqlite import DataBase
+
+class Position(BaseModel):
+    symbol: str
+    quantity: int
+    avg_cost: Decimal
+
+class Portfolio(BaseModel):
+    strategy_id: str
+    positions: dict[str, Position] = {}
+
+db = DataBase()
+
+# First, add the related Position to its table
+position = Position(symbol="AAPL", quantity=4, avg_cost=Decimal("25.5"))
+db.add("Positions", position, pk="symbol")
+
+# Then add Portfolio with foreign_tables parameter
+portfolio = Portfolio(strategy_id="m", positions={"AAPL": position})
+db.add("Portfolios", portfolio, pk="strategy_id", foreign_tables={"positions": "Positions"})
+
+# Retrieve - the Position objects are fully reconstructed
+record = db.model_from_table("Portfolios", "m")
+print(record.positions["AAPL"].avg_cost)  # 25.5
+```
+
+Dict keys may be arbitrary labels and do not have to match the primary keys of the nested models:
+
+```python
+portfolio = Portfolio(strategy_id="m", positions={"main": position})
+db.add("Portfolios", portfolio, pk="strategy_id", foreign_tables={"positions": "Positions"})
+
+record = db.model_from_table("Portfolios", "m")
+print(record.positions["main"].symbol)  # AAPL
+```
+
+`dict[str, Primitive]` fields (e.g. `dict[str, str]`) also round-trip correctly without any `foreign_tables` entry.
+
 ## SQConfig: Custom Object Conversion
 
 For models you don't want to store in separate tables, use `SQConfig` with the `special_insert` flag to store them as strings:
