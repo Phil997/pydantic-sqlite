@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from pydantic import BaseModel
 
 LENGTH = 10
@@ -46,3 +48,14 @@ class CarRegistration(BaseModel):
     id: str
     person: Person
     car: Car
+
+
+class Position(BaseModel):
+    symbol: str
+    quantity: int
+    avg_cost: Decimal | None = None
+
+
+class Portfolio(BaseModel):
+    strategy_id: str
+    positions: dict[str, Position] = {}

@@ -3,6 +3,7 @@ from typing import Union
 
 from pydantic_sqlite._misc import (convert_value_into_union_types,
                                    get_unique_filename)
+from pydantic_sqlite._utils import row_foreign_ids
 
 
 def test_get_unique_filename_existing(tmp_path: Path):
@@ -38,3 +39,15 @@ def test_convert_value_into_union_types_fallback():
     MyUnion = Union[int, float]
     # If conversion fails, should return the original value
     assert convert_value_into_union_types(MyUnion, "def") == "def"
+
+
+def test_row_foreign_ids_none():
+    assert row_foreign_ids({"person": None}, "person") == []
+
+
+def test_row_foreign_ids_scalar():
+    assert row_foreign_ids({"person": "p1"}, "person") == ["p1"]
+
+
+def test_row_foreign_ids_json_list():
+    assert row_foreign_ids({"employees": '["e1", "e2"]'}, "employees") == ["e1", "e2"]

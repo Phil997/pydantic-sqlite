@@ -14,10 +14,10 @@ jobs:
         python: ['3.10', '3.11', '3.12', '3.13', '3.14']
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install the latest version of uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v10.0.1
         with:
           python-version: '${{ matrix.python }}'
       - run: uv sync
@@ -27,6 +27,6 @@ jobs:
 
       - run: uv run coverage xml
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

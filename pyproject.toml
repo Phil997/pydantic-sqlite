@@ -17,6 +17,7 @@ dependencies = [
 ]
 
 [project.urls]
+Documentation = "https://phil997.github.io/pydantic-sqlite/"
 Repository = "https://github.com/Phil997/pydantic-sqlite"
 
 [tool.hatch.build.targets.sdist]
@@ -34,10 +35,19 @@ dev = [
     "pytest (>=8.1.1)",
     "hypothesis (>=6.100.0)",
     "testfixtures (>=8.1.0)",
-    "pytest-cov (<=6)"
-,
+    "pytest-cov>=7",
+]
+documentation = [
+    "mkdocs>=1.6.1",
+    "pymdown-extensions>=10.20.1",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true

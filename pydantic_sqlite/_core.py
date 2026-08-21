@@ -16,6 +16,7 @@ from pydantic.fields import FieldInfo
 from sqlite_utils import Database as _Database
 
 from ._misc import convert_value_into_union_types
+from ._utils import row_foreign_ids
 
 SPECIALTYPE = [Any, Literal, Union]
 
@@ -175,6 +176,9 @@ class DataBase:
             foreign_tables (dict, optional): A dictionary of foreign tables and their mappings.
             update_nested_models (bool, optional): Whether to update nested models if they already exist.
             pk (str, optional): The primary key field name. Defaults to "uuid".
+
+        Note:
+            Fields of type `dict[str, BaseModel]` are stored as a JSON mapping of `{key: primary_key}` in the column
         """
         if foreign_tables is None:
             foreign_tables = dict()
@@ -224,6 +228,22 @@ class DataBase:
                     data_to_save[field_name] = [getattr(m, _foreign_pk) for m in field_value]
                 else:
                     data_to_save[field_name] = [str(m) for m in field_value]
+
+            elif get_origin(field_info.annotation) is dict:
+                args = typing.get_args(field_info.annotation)
+                if inspect.isclass(args[1]) and issubclass(args[1], BaseModel):
+                    _foreign_table_name = self._get_foreign_table_name(field_name, foreign_tables)
+                    _foreign_pk = self._primary_keys[_foreign_table_name]
+                    foreign_keys.append((field_name, _foreign_table_name, _foreign_pk))
+
+                    data_to_save[field_name] = json.dumps({
+                        key: self._upsert_model_in_foreign_table(
+                            value, _foreign_table_name, update_nested_models, pk=_foreign_pk,
+                        )
+                        for key, value in field_value.items()
+                    })
+                else:
+                    data_to_save[field_name] = field_value
 
             elif inspect.isclass(field_info.annotation) and issubclass(field_info.annotation, BaseModel):
                 # the model has got a field which is of type BaseModel, so this filed must be in a foreign table
@@ -301,6 +321,53 @@ class DataBase:
             pk_value = getattr(pk_value, _pk)
         entries = [row for row in self._db[tablename].rows_where(f"{_pk} = ?", [pk_value])]
         return bool(entries)
+
+    def delete(self, tablename: str, pk_value: Union[str, BaseModel], cascade: bool = False) -> bool:
+        """
+        Deletes a row from the table by primary key.
+
+        Args:
+            tablename (str): Name of the table to delete from.
+            pk_value (str | BaseModel): The value of the primary key to delete, or a BaseModel instance.
+            cascade (bool, optional): If True, also deletes exclusively referenced nested rows
+              in foreign tables. Defaults to False.
+
+        Returns:
+            bool: True if a row was deleted, False if no row matched the primary key.
+        """
+        if tablename not in self._basemodels:
+            raise KeyError(f"Can't find table '{tablename}' in Database")
+        if isinstance(pk_value, BaseModel):
+            pk_value = getattr(pk_value, self._primary_keys[tablename])
+        if not self.model_in_table(tablename, pk_value):
+            return False
+        if cascade:
+            self._delete_with_cascade(tablename, pk_value)
+        else:
+            self._db[tablename].delete(pk_value)
+        return True
+
+    def delete_where(self, tablename: str, where: str, where_args: dict | None = None, cascade: bool = False) -> int:
+        """
+        Deletes all rows in the table matching the given where clause.
+
+        Args:
+            tablename (str): The name of the table.
+            where (str): SQL where fragment to use, e.g. 'name = :name'.
+            where_args (dict, optional): Parameters for the where clause. Defaults to None.
+            cascade (bool, optional): If True, also deletes exclusively referenced nested rows
+              in foreign tables. Defaults to False.
+
+        Returns:
+            int: The number of deleted rows.
+        """
+        if tablename not in self._basemodels:
+            raise KeyError(f"Can't find table '{tablename}' in Database")
+        _pk = self._primary_keys[tablename]
+        _rows = list(self._db[tablename].rows_where(where, where_args))
+        for _row in _rows:
+            self.delete(tablename, _row[_pk], cascade=cascade)
+        return len(_rows)
 
     def model_from_table(self, tablename: str, pk_value: str) -> typing.Any:
         """
@@ -439,11 +506,18 @@ class DataBase:
                         self.model_from_table(foreign_refs[field_name], val)
                         for val in json.loads(field_value)
                     ]
+                elif get_origin(info.annotation) == dict:
+                    data = {
+                        key: self.model_from_table(foreign_refs[field_name], val)
+                        for key, val in json.loads(field_value).items()
+                    }
                 else:
                     data = self.model_from_table(foreign_refs[field_name], field_value)
             else:
                 if get_origin(info.annotation) == list:
                     data = json.loads(field_value)
+                elif get_origin(info.annotation) == dict:
+                    data = None if field_value is None else json.loads(field_value)
                 elif get_origin(info.annotation) == Union:
                     data = convert_value_into_union_types(info.annotation, field_value)
                 else:
@@ -523,3 +597,49 @@ class DataBase:
             if not special_possible(obj_class := field_value.__class__):
                 return False
             return obj_class.SQConfig.convert(field_value)
+
+    def _count_foreign_references(self, tablename: str, pk_value: str) -> int:
+        """
+        Counts how often a primary key of the given table is referenced by foreign keys of other tables.
+
+        Args:
+            tablename (str): The name of the referenced table.
+            pk_value (str): The primary key value of the referenced row.
+
+        Returns:
+            int: The number of references to the primary key.
+        """
+        count = 0
+        for _tablename in self._basemodels:
+            for _fk in self._db[_tablename].foreign_keys:
+                if _fk.other_table != tablename:
+                    continue
+                for _row in self._db[_tablename].rows:
+                    if pk_value in row_foreign_ids(_row, _fk.column):
+                        count += 1
+        return count
+
+    def _delete_with_cascade(self, tablename: str, pk_value: str, visited: set | None = None) -> None:
+        """
+        Deletes a row and all nested rows in foreign tables that are exclusively referenced by it.
+
+        Args:
+            tablename (str): The name of the table.
+            pk_value (str): The primary key value of the row to delete.
+            visited (set, optional): Internal set of already processed (tablename, pk_value) tuples.
+        """
+        if visited is None:
+            visited = set()
+        if (tablename, pk_value) in visited:
+            return
+        visited.add((tablename, pk_value))
+        row = dict(self._db[tablename].get(pk_value))
+        for _fk in self._db[tablename].foreign_keys:
+            if _fk.other_table not in self._basemodels:
+                continue
+            for child_id in row_foreign_ids(row, _fk.column):
+                if not self.model_in_table(_fk.other_table, child_id):
+                    continue
+                if self._count_foreign_references(_fk.other_table, child_id) <= 1:
+                    self._delete_with_cascade(_fk.other_table, child_id, visited)
+        self._db[tablename].delete(pk_value)
