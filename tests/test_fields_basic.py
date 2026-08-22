@@ -27,6 +27,16 @@ class Example(BaseModel):
     ex_date: Optional[datetime] = None
 
 
+class ExampleIterable(BaseModel):
+    uuid: str
+    ex_lst: list[str]
+    ex_tuple: tuple[str, ...]
+    ex_set: set[str]
+    ex_lst_ad: list[str | int]
+    ex_tuple_ad: tuple[str | int, ...]
+    ex_set_ad: set[str | int]
+
+
 @st.composite
 def example_values(draw):
     return dict(
@@ -60,6 +70,31 @@ def test_various_types(values: dict):
 
     assert db.model_in_table('Test', ex)
     assert db.model_in_table('Test', ex.uuid)
+
+
+def test_iterable_types():
+    db = DataBase()
+    ex = ExampleIterable(
+        uuid="iterable-1",
+        ex_lst=["one", "two"],
+        ex_tuple=("three", "four"),
+        ex_set={"five", "six"},
+        ex_lst_ad=["seven", 8],
+        ex_tuple_ad=("nine", 10),
+        ex_set_ad={"eleven", 12},
+    )
+
+    db.add("IterableExamples", ex)
+
+    result = db.model_from_table("IterableExamples", ex.uuid)
+
+    assert result == ex
+    assert isinstance(result.ex_lst, list)
+    assert isinstance(result.ex_tuple, tuple)
+    assert isinstance(result.ex_set, set)
+    assert isinstance(result.ex_lst_ad, list)
+    assert isinstance(result.ex_tuple_ad, tuple)
+    assert isinstance(result.ex_set_ad, set)
 
 
 @given(st.lists(example_values(), min_size=1))

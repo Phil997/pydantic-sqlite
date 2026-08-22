@@ -1,9 +1,26 @@
+from enum import Enum
 from pathlib import Path
 from typing import Union
 
 from pydantic_sqlite._misc import (convert_value_into_union_types,
-                                   get_unique_filename)
+                                   get_unique_filename, normalize_for_sqlite)
 from pydantic_sqlite._utils import row_foreign_ids
+
+
+class Status(Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
+def test_normalize_for_sqlite_all_branches():
+    value = object()
+
+    assert normalize_for_sqlite(Status.ACTIVE) == "active"
+    assert normalize_for_sqlite([Status.ACTIVE, value]) == ["active", value]
+    assert normalize_for_sqlite((Status.INACTIVE, value)) == ["inactive", value]
+    assert set(normalize_for_sqlite({Status.ACTIVE, Status.INACTIVE})) == {"active", "inactive"}
+    assert normalize_for_sqlite({Status.ACTIVE: [Status.INACTIVE]}) == {"active": ["inactive"]}
+    assert normalize_for_sqlite(value) is value
 
 
 def test_get_unique_filename_existing(tmp_path: Path):
