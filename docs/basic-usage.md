@@ -111,6 +111,26 @@ for item in db("Examples"):
     print(f"  Categories: {', '.join(item.categories)}")
 ```
 
+## Supported Field Types
+
+The following field types are supported and can be stored and loaded through a Pydantic model:
+
+| Field type | Notes |
+| --- | --- |
+| `str`, `int`, `float`, `bool` | Stored as SQLite scalar values |
+| `datetime`, `Decimal` | Serialized by `sqlite-utils` |
+| `Optional[T]` | Supports `None` values |
+| `Union[...]` | Reconstructed using the first matching type |
+| `Literal[...]` | Stored as a string |
+| `list[T]` | Primitive values are stored as JSON |
+| `tuple[T, ...]` | Stored as JSON and reconstructed as a tuple |
+| `set[T]` | Stored as JSON and reconstructed as a set |
+| `dict[K, V]` | Primitive values are stored as JSON |
+| `Enum` and `StrEnum` | The Enum value is stored and the Enum member is reconstructed |
+| Nested `BaseModel` | Requires a corresponding `foreign_tables` entry; see [Nested Models](advanced-usage.md#nested-models-with-foreign-keys) |
+
+`Any` is also supported for storage. Since it carries no concrete type information, an Enum stored through an `Any` field is loaded as its value rather than as an Enum member. Enum fields should therefore be explicitly typed when the Enum type must be preserved.
+
 ## Enum Values
 
 Enum fields are stored using their values and reconstructed as Enum members when queried:

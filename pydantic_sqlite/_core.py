@@ -423,7 +423,7 @@ class DataBase:
         if persist:
             self._db[_METADATA_TABLE].upsert(_m.data(), pk="table")
 
-    def _build_basemodel_from_dict(
+    def _build_basemodel_from_dict(  # noqa: C901
         self, tablemodel: TableMetaInfo, row: dict, foreign_refs: dict, pk: str
     ) -> BaseModel:
         """
@@ -466,6 +466,10 @@ class DataBase:
             else:
                 if get_origin(info.annotation) == list:
                     data = json.loads(field_value)
+                elif get_origin(info.annotation) == tuple:
+                    data = tuple(json.loads(field_value))
+                elif get_origin(info.annotation) == set:
+                    data = set(json.loads(field_value))
                 elif get_origin(info.annotation) == dict:
                     data = None if field_value is None else json.loads(field_value)
                 elif get_origin(info.annotation) == Union:

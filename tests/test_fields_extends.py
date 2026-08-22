@@ -1,3 +1,4 @@
+import json
 import string
 from enum import Enum, IntEnum
 from random import choice
@@ -59,6 +60,8 @@ class EnumValues(BaseModel):
     any_value: Any
     union_value: Union[IntegerEnum, str]
     list_value: list[IntegerEnum]
+    tuple_value: tuple[IntegerEnum, ...]
+    set_value: set[IntegerEnum]
     dict_value: dict[str, StringEnum]
 
 
@@ -88,6 +91,8 @@ def test_enum_types_roundtrip():
         any_value=StringEnum.BAR,
         union_value=IntegerEnum.LOW,
         list_value=[IntegerEnum.LOW, IntegerEnum.HIGH],
+        tuple_value=(IntegerEnum.HIGH, IntegerEnum.LOW),
+        set_value={IntegerEnum.LOW, IntegerEnum.HIGH},
         dict_value={"buy": StringEnum.FOO},
     )
 
@@ -101,6 +106,8 @@ def test_enum_types_roundtrip():
     assert raw["any_value"] == "BAR"
     assert raw["union_value"] == 1
     assert raw["list_value"] == "[1, 2]"
+    assert raw["tuple_value"] == "[2, 1]"
+    assert set(json.loads(raw["set_value"])) == {1, 2}
     assert raw["dict_value"] == '{"buy": "FOO"}'
 
     result = db.model_from_table("EnumValues", "1")
@@ -112,6 +119,10 @@ def test_enum_types_roundtrip():
     assert result.any_value == "BAR"
     assert isinstance(result.union_value, IntegerEnum)
     assert all(isinstance(item, IntegerEnum) for item in result.list_value)
+    assert isinstance(result.tuple_value, tuple)
+    assert all(isinstance(item, IntegerEnum) for item in result.tuple_value)
+    assert isinstance(result.set_value, set)
+    assert all(isinstance(item, IntegerEnum) for item in result.set_value)
     assert all(isinstance(item, StringEnum) for item in result.dict_value.values())
 
 
