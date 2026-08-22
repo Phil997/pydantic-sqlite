@@ -20,6 +20,9 @@ from ._utils import row_foreign_ids
 
 SPECIALTYPE = [Any, Literal, Union]
 
+_METADATA_TABLE = "__table_metadata__"
+_LEGACY_METADATA_TABLE = "__basemodels__"
+
 
 class TableMetaInfo:
     """
@@ -97,16 +100,34 @@ class DataBase:
         else:
             self._db = _Database(filename_or_conn, **kwargs)
 
-        if "__basemodels__" in self._db.table_names():
+        if _LEGACY_METADATA_TABLE in self._db.table_names():
+            self._migrate_table_metadata()
+        if _METADATA_TABLE in self._db.table_names():
             self._load_internal_metadata()
+
+    def _migrate_table_metadata(self) -> None:
+        """
+        Internal helper: Renames the legacy '__basemodels__' table to '__table_metadata__'
+        so that existing database files keep working without data loss.
+        """
+        if _METADATA_TABLE in self._db.table_names():
+            # Merge legacy rows into the new table (e.g. after load() into an
+            # already-populated database), then drop the legacy table.
+            for legacy in self._db[_LEGACY_METADATA_TABLE].rows:
+                self._db[_METADATA_TABLE].upsert(dict(legacy), pk="table")
+            self._db[_LEGACY_METADATA_TABLE].drop()
+            logging.debug(f"Migrated rows from '{_LEGACY_METADATA_TABLE}' into '{_METADATA_TABLE}'")
+            return
+        self._db.rename_table(_LEGACY_METADATA_TABLE, _METADATA_TABLE)
+        logging.debug(f"Migrated internal metadata table '{_LEGACY_METADATA_TABLE}' to '{_METADATA_TABLE}'")
 
     def _load_internal_metadata(self) -> None:
         """
-        Internal helper: Reads the __basemodels__ table and re-imports the Pydantic classes
+        Internal helper: Reads the metadata table and re-imports the Pydantic classes
         to populate _table_meta and _primary_keys.
         """
         try:
-            for model in self._db["__basemodels__"].rows:
+            for model in self._db[_METADATA_TABLE].rows:
                 parts = model["modulename"].split(".")
                 classname = parts[-1]
                 modulename = ".".join(parts[:-1])
@@ -409,7 +430,10 @@ class DataBase:
         self._db.conn.executescript(query)
         file_db.close()
 
-        self._load_internal_metadata()
+        if _LEGACY_METADATA_TABLE in self._db.table_names():
+            self._migrate_table_metadata()
+        if _METADATA_TABLE in self._db.table_names():
+            self._load_internal_metadata()
 
     def save(self, filename: Union[str, Path], backup: bool = True, backup_suffix: str = ".backup") -> None:
         """
@@ -458,7 +482,7 @@ class DataBase:
     def _create_new_table(self, tablename: str, basemodel_cls: ModelMetaclass, pk: str, persist: bool = True) -> None:
         """
         Registers the table metadata, including the table name, BaseModel class, and primary key,
-        in the internal dictionaries and persists the metadata in the '__basemodels__' table.
+        in the internal dictionaries and persists the metadata in the '__table_metadata__' table.
 
         Args:
             tablename (str): The name of the table to create.
@@ -471,7 +495,7 @@ class DataBase:
         self._primary_keys.update({tablename: pk})
 
         if persist:
-            self._db["__basemodels__"].upsert(_m.data(), pk="table")
+            self._db[_METADATA_TABLE].upsert(_m.data(), pk="table")
 
     def _build_basemodel_from_dict(
         self, tablemodel: TableMetaInfo, row: dict, foreign_refs: dict, pk: str

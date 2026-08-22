@@ -1,4 +1,6 @@
+import json
 import os
+import sqlite3
 from pathlib import Path
 from unittest import mock
 from uuid import uuid4
@@ -209,3 +211,111 @@ def test_metadata_pk_collision_fix(tmp_path: Path):
     # Data should be retrievable from both
     assert list(db_new("Admins"))[0].name == "Admin"
     assert list(db_new("Users"))[0].name == "User"
+
+
+def _create_legacy_db(path: Path) -> None:
+    """
+    Builds a database file in the legacy format where the metadata table was
+    named '__basemodels__' (primary key 'modulename').
+    """
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("CREATE TABLE Persons (uuid TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("INSERT INTO Persons (uuid, name) VALUES (?, ?)", ("1", "Legacy"))
+        conn.execute(
+            'CREATE TABLE __basemodels__ ("table" TEXT, modulename TEXT, pks TEXT, PRIMARY KEY (modulename))'
+        )
+        conn.execute(
+            'INSERT INTO __basemodels__ ("table", modulename, pks) VALUES (?, ?, ?)',
+            ("Persons", "tests._helper.Person", json.dumps(["uuid"])),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_legacy_metadata_migrated_on_open(tmp_path: Path):
+    db_path = tmp_path / "legacy.db"
+    _create_legacy_db(db_path)
+
+    db = DataBase(db_path)
+
+    assert "__basemodels__" not in db._db.table_names()
+    assert "__table_metadata__" in db._db.table_names()
+    assert "Persons" in db._table_meta
+
+    results = list(db("Persons"))
+    assert len(results) == 1
+    assert results[0].name == "Legacy"
+    assert isinstance(results[0], Person)
+
+    # Reopen: no legacy table anymore, everything still works
+    db2 = DataBase(db_path)
+    assert "__basemodels__" not in db2._db.table_names()
+    assert "__table_metadata__" in db2._db.table_names()
+    assert list(db2("Persons"))[0].name == "Legacy"
+
+
+def test_both_metadata_tables_prefers_new(tmp_path: Path):
+    db_path = tmp_path / "both.db"
+    _create_legacy_db(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            'CREATE TABLE __table_metadata__ '
+            '("table" TEXT, modulename TEXT, pks TEXT, PRIMARY KEY ("table"))'
+        )
+        conn.execute(
+            'INSERT INTO __table_metadata__ ("table", modulename, pks) VALUES (?, ?, ?)',
+            ("Other", "tests._helper.Address", json.dumps(["street"])),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    db = DataBase(db_path)
+
+    # Legacy table is merged into the new one and dropped
+    assert "__basemodels__" not in db._db.table_names()
+    assert "__table_metadata__" in db._db.table_names()
+    assert "Persons" in db._table_meta
+    assert "Other" in db._table_meta
+    assert list(db("Persons"))[0].name == "Legacy"
+
+
+def test_legacy_edit_save_reopen_roundtrip(tmp_path: Path):
+    """
+    Full roundtrip: Open an existing legacy DB, remove old objects, add new ones,
+    save to a new file, then reopen it with a fresh DataBase instance.
+    The migration must have removed the legacy '__basemodels__' table.
+    """
+    legacy = tmp_path / "legacy.db"
+    _create_legacy_db(legacy)
+
+    # Load legacy DB into an in-memory instance
+    db = DataBase()
+    db.load(str(legacy))
+
+    assert "__basemodels__" not in db._db.table_names()
+    assert "__table_metadata__" in db._db.table_names()
+
+    # The legacy row is hydrated from the migrated metadata
+    assert sorted(row.name for row in db("Persons")) == ["Legacy"]
+
+    # Remove the old object and add new ones
+    assert db.delete("Persons", "1") is True
+    db.add("Persons", Person(uuid="2", name="Alice"))
+    db.add("Persons", Person(uuid="3", name="Bob"))
+
+    # Save the migrated state to a new file
+    target = tmp_path / "migrated.db"
+    db.save(str(target))
+
+    # Fresh DataBase instance opens the saved file
+    fresh = DataBase(target)
+    assert "__basemodels__" not in fresh._db.table_names()
+    assert "__table_metadata__" in fresh._db.table_names()
+
+    rows = list(fresh("Persons"))
+    assert sorted(row.name for row in rows) == ["Alice", "Bob"]
+    assert sorted(row.uuid for row in rows) == ["2", "3"]
