@@ -21,7 +21,7 @@ from ._utils import row_foreign_ids
 SPECIALTYPE = [Any, Literal, Union]
 
 
-class TableBaseModel:
+class TableMetaInfo:
     """
     Stores metadata about a table and its associated Pydantic BaseModel class.
 
@@ -41,7 +41,7 @@ class TableBaseModel:
         self, table: str, basemodel_cls: ModelMetaclass, pks: list[str]
     ) -> None:
         """
-        Initialize TableBaseModel with table name, BaseModel class, and primary keys.
+        Initialize TableMetaInfo with table name, BaseModel class, and primary keys.
 
         Args:
             table (str): The name of the table.
@@ -70,11 +70,11 @@ class DataBase:
 
     Attributes:
         _db (_Database): The underlying SQLite database instance.
-        _basemodels (dict[str, TableBaseModel]): Mapping of tablenames and their associated BaseModel classes.
+        _table_meta (dict[str, TableMetaInfo]): Mapping of tablenames and their associated BaseModel classes.
         _primary_keys (dict[str, str]): Mapping of tablenames to their primary key field names.
     """
     _db: _Database
-    _basemodels: dict[str, TableBaseModel]
+    _table_meta: dict[str, TableMetaInfo]
     _primary_keys: dict[str, str]
 
     def __init__(
@@ -90,7 +90,7 @@ class DataBase:
                 The filename, Path, or sqlite3.Connection to use for the database. If None, uses in-memory DB.
             **kwargs: Additional keyword arguments passed to sqlite_utils.Database.
         """
-        self._basemodels = dict()
+        self._table_meta = dict()
         self._primary_keys = dict()
         if filename_or_conn is None:
             self._db = _Database(memory=True, **kwargs)
@@ -103,7 +103,7 @@ class DataBase:
     def _load_internal_metadata(self) -> None:
         """
         Internal helper: Reads the __basemodels__ table and re-imports the Pydantic classes
-        to populate _basemodels and _primary_keys.
+        to populate _table_meta and _primary_keys.
         """
         try:
             for model in self._db["__basemodels__"].rows:
@@ -139,11 +139,11 @@ class DataBase:
             BaseModel: Instances from the table.
         """
         try:
-            basemodel = self._basemodels[tablename]
+            basemodel = self._table_meta[tablename]
             foreign_refs = {key.column: key.other_table for key in self._db[tablename].foreign_keys}
         except KeyError:
-            raise KeyError(
-                f"Can't find table '{tablename}' in Database. Available: {list(self._basemodels.keys())}") from None
+            _av = list(self._table_meta.keys())
+            raise KeyError(f"Can't find table '{tablename}' in Database. Available: {_av}") from None
 
         for row in self._db[tablename].rows_where(**kwargs):
             yield self._build_basemodel_from_dict(basemodel, row, foreign_refs, self._primary_keys[tablename])
@@ -163,7 +163,7 @@ class DataBase:
             self,
             tablename: str,
             model: BaseModel,
-            foreign_tables: dict = None,
+            foreign_tables: dict | None = None,
             update_nested_models: bool = True,
             pk: str = "uuid"
     ) -> None:
@@ -187,14 +187,14 @@ class DataBase:
         if not isinstance(model, BaseModel):
             raise TypeError("Only pydantic BaseModels can be added to the database")
 
-        if tablename not in self._basemodels:
+        if tablename not in self._table_meta:
             self._create_new_table(
                 tablename=tablename,
                 basemodel_cls=type(model),
                 pk=pk)
 
-        if not isinstance(model, self._basemodels[tablename].basemodel_cls):
-            _table_type = self._basemodels[tablename].basemodel_cls.__name__
+        if not isinstance(model, self._table_meta[tablename].basemodel_cls):
+            _table_type = self._table_meta[tablename].basemodel_cls.__name__
             msg = f"Only pydantic BaseModels of type '{_table_type}' can be added to the table '{tablename}'"
             raise TypeError(msg)
 
@@ -335,7 +335,7 @@ class DataBase:
         Returns:
             bool: True if a row was deleted, False if no row matched the primary key.
         """
-        if tablename not in self._basemodels:
+        if tablename not in self._table_meta:
             raise KeyError(f"Can't find table '{tablename}' in Database")
         if isinstance(pk_value, BaseModel):
             pk_value = getattr(pk_value, self._primary_keys[tablename])
@@ -361,7 +361,7 @@ class DataBase:
         Returns:
             int: The number of deleted rows.
         """
-        if tablename not in self._basemodels:
+        if tablename not in self._table_meta:
             raise KeyError(f"Can't find table '{tablename}' in Database")
         _pk = self._primary_keys[tablename]
         _rows = list(self._db[tablename].rows_where(where, where_args))
@@ -384,7 +384,7 @@ class DataBase:
         _pk = self._primary_keys[tablename]
         entries = [row for row in self._db[tablename].rows_where(f"{_pk} = ?", [pk_value])]
 
-        model = self._basemodels[tablename]
+        model = self._table_meta[tablename]
         foreign_refs = {key.column: key.other_table for key in self._db[tablename].foreign_keys}
 
         if not entries:
@@ -466,21 +466,21 @@ class DataBase:
             pk (str): The primary key field name for the table.
             persist (bool): Whether to write the metadata to the DB. Defaults to True.
         """
-        _m = TableBaseModel(table=tablename, basemodel_cls=basemodel_cls, pks=[pk])
-        self._basemodels.update({tablename: _m})
+        _m = TableMetaInfo(table=tablename, basemodel_cls=basemodel_cls, pks=[pk])
+        self._table_meta.update({tablename: _m})
         self._primary_keys.update({tablename: pk})
 
         if persist:
             self._db["__basemodels__"].upsert(_m.data(), pk="table")
 
     def _build_basemodel_from_dict(
-        self, tablemodel: TableBaseModel, row: dict, foreign_refs: dict, pk: str
+        self, tablemodel: TableMetaInfo, row: dict, foreign_refs: dict, pk: str
     ) -> BaseModel:
         """
         Builds a BaseModel instance from a row dictionary, handling nested and foreign key fields.
 
         Args:
-            tablemodel (TableBaseModel): The TableBaseModel instance for the table.
+            tablemodel (TableMetaInfo): The TableMetaInfo instance for the table.
             row (dict): The row data as a dictionary.
             foreign_refs (dict): A dictionary of foreign key references.
             pk (str): The primary key field name.
@@ -610,7 +610,7 @@ class DataBase:
             int: The number of references to the primary key.
         """
         count = 0
-        for _tablename in self._basemodels:
+        for _tablename in self._table_meta:
             for _fk in self._db[_tablename].foreign_keys:
                 if _fk.other_table != tablename:
                     continue
@@ -635,7 +635,7 @@ class DataBase:
         visited.add((tablename, pk_value))
         row = dict(self._db[tablename].get(pk_value))
         for _fk in self._db[tablename].foreign_keys:
-            if _fk.other_table not in self._basemodels:
+            if _fk.other_table not in self._table_meta:
                 continue
             for child_id in row_foreign_ids(row, _fk.column):
                 if not self.model_in_table(_fk.other_table, child_id):

@@ -170,17 +170,17 @@ def test_init_hydrates_existing_metadata(tmp_path: Path):
     db1.add(TEST_TABLE_NAME, person_data)
 
     # 2. Initialize second session from the same file
-    # Prior to the fix, this would have empty _basemodels and fail on access
+    # Prior to the fix, this would have empty _table_meta and fail on access
     db2 = DataBase(db_path)
 
     # 3. Verify access
-    # This accesses ._basemodels[TEST_TABLE_NAME] internally
+    # This accesses ._table_meta[TEST_TABLE_NAME] internally
     results = list(db2(TEST_TABLE_NAME))
 
     assert len(results) == 1
     assert results[0].name == "Persistence User"
     assert isinstance(results[0], Person)
-    assert TEST_TABLE_NAME in db2._basemodels
+    assert TEST_TABLE_NAME in db2._table_meta
 
 
 def test_metadata_pk_collision_fix(tmp_path: Path):
@@ -203,8 +203,8 @@ def test_metadata_pk_collision_fix(tmp_path: Path):
     db_new = DataBase(db_path)
 
     # Both tables should exist in metadata
-    assert "Admins" in db_new._basemodels
-    assert "Users" in db_new._basemodels
+    assert "Admins" in db_new._table_meta
+    assert "Users" in db_new._table_meta
 
     # Data should be retrievable from both
     assert list(db_new("Admins"))[0].name == "Admin"
