@@ -111,6 +111,34 @@ for item in db("Examples"):
     print(f"  Categories: {', '.join(item.categories)}")
 ```
 
+## Enum Values
+
+Enum fields are stored using their values and reconstructed as Enum members when queried:
+
+```python
+from enum import Enum
+from pydantic import BaseModel
+from pydantic_sqlite import DataBase
+
+class Status(str, Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+class User(BaseModel):
+    uuid: str
+    name: str
+    status: Status
+
+db = DataBase()
+db.add("Users", User(uuid="user-1", name="Alice", status=Status.ACTIVE))
+
+user = db.model_from_table("Users", "user-1")
+assert user.status is Status.ACTIVE
+assert isinstance(user.status, Status)
+```
+
+The same behavior applies to Enum fields with integer values, such as `class Priority(Enum): LOW = 1`.
+
 ## Updating Data
 
 `pydantic-sqlite` uses an "upsert" strategy. If you add a model with the same primary key, it updates the existing entry:

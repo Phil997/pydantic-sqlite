@@ -15,7 +15,7 @@ from pydantic._internal._model_construction import ModelMetaclass
 from pydantic.fields import FieldInfo
 from sqlite_utils import Database as _Database
 
-from ._misc import convert_value_into_union_types
+from ._misc import convert_value_into_union_types, normalize_for_sqlite
 from ._utils import row_foreign_ids
 
 SPECIALTYPE = [Any, Literal, Union]
@@ -178,9 +178,11 @@ class DataBase:
 
         # create dict for writing to the Table
         data_to_save = (
-            model.model_dump()
-            if not hasattr(model, "sqlite_repr")
-            else model.sqlite_repr
+            normalize_for_sqlite(
+                model.model_dump()
+                if not hasattr(model, "sqlite_repr")
+                else model.sqlite_repr
+            )
         )
 
         foreign_keys = []
@@ -189,9 +191,6 @@ class DataBase:
 
             if res := self._special_conversion(field_value):  # Special Insert with SQConfig.convert
                 data_to_save[field_name] = res
-
-            elif field_info.annotation == Any or get_origin(field_info.annotation) is Union:
-                data_to_save[field_name] = field_value
 
             elif get_origin(field_info.annotation) is Literal:
                 data_to_save[field_name] = str(field_value)
@@ -204,8 +203,6 @@ class DataBase:
                     foreign_keys.append((field_name, _foreign_table_name, _foreign_pk))
 
                     data_to_save[field_name] = [getattr(m, _foreign_pk) for m in field_value]
-                else:
-                    data_to_save[field_name] = [str(m) for m in field_value]
 
             elif get_origin(field_info.annotation) is dict:
                 args = typing.get_args(field_info.annotation)
@@ -220,8 +217,6 @@ class DataBase:
                         )
                         for key, value in field_value.items()
                     })
-                else:
-                    data_to_save[field_name] = field_value
 
             elif inspect.isclass(field_info.annotation) and issubclass(field_info.annotation, BaseModel):
                 # the model has got a field which is of type BaseModel, so this filed must be in a foreign table

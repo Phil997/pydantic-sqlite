@@ -1,7 +1,14 @@
 import string
+from enum import Enum, IntEnum
 from random import choice
 from typing import Any, Literal, Optional, Union
 from uuid import uuid4
+
+try:
+    from enum import StrEnum
+except ImportError:
+    class StrEnum(str, Enum):
+        pass
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -23,6 +30,38 @@ class Example(BaseModel):
     ex_union: Union[int, str]
 
 
+class StringEnum(str, Enum):
+    FOO = "FOO"
+    BAR = "BAR"
+
+
+class NativeStringEnum(StrEnum):
+    FOO = "FOO"
+    BAR = "BAR"
+
+
+class IntegerEnum(Enum):
+    LOW = 1
+    HIGH = 2
+
+
+class IntegerIntEnum(IntEnum):
+    LOW = 1
+    HIGH = 2
+
+
+class EnumValues(BaseModel):
+    id: str
+    string_value: StringEnum
+    str_enum_value: NativeStringEnum
+    integer_value: IntegerEnum
+    int_enum_value: IntegerIntEnum
+    any_value: Any
+    union_value: Union[IntegerEnum, str]
+    list_value: list[IntegerEnum]
+    dict_value: dict[str, StringEnum]
+
+
 @st.composite
 def example_values(draw):
     return dict(
@@ -36,6 +75,44 @@ def example_values(draw):
             st.integers(min_value=SQLITE_INTEGERS_MIN, max_value=SQLITE_INTEGERS_MAX)
         )),
     )
+
+
+def test_enum_types_roundtrip():
+    db = DataBase()
+    values = EnumValues(
+        id="1",
+        string_value=StringEnum.FOO,
+        str_enum_value=NativeStringEnum.BAR,
+        integer_value=IntegerEnum.HIGH,
+        int_enum_value=IntegerIntEnum.LOW,
+        any_value=StringEnum.BAR,
+        union_value=IntegerEnum.LOW,
+        list_value=[IntegerEnum.LOW, IntegerEnum.HIGH],
+        dict_value={"buy": StringEnum.FOO},
+    )
+
+    db.add("EnumValues", values, pk="id")
+
+    raw = next(db._db["EnumValues"].rows)
+    assert raw["string_value"] == "FOO"
+    assert raw["str_enum_value"] == "BAR"
+    assert raw["integer_value"] == 2
+    assert raw["int_enum_value"] == 1
+    assert raw["any_value"] == "BAR"
+    assert raw["union_value"] == 1
+    assert raw["list_value"] == "[1, 2]"
+    assert raw["dict_value"] == '{"buy": "FOO"}'
+
+    result = db.model_from_table("EnumValues", "1")
+    assert result == values
+    assert isinstance(result.string_value, StringEnum)
+    assert isinstance(result.str_enum_value, NativeStringEnum)
+    assert isinstance(result.integer_value, IntegerEnum)
+    assert isinstance(result.int_enum_value, IntegerIntEnum)
+    assert result.any_value == "BAR"
+    assert isinstance(result.union_value, IntegerEnum)
+    assert all(isinstance(item, IntegerEnum) for item in result.list_value)
+    assert all(isinstance(item, StringEnum) for item in result.dict_value.values())
 
 
 @given(example_values())
