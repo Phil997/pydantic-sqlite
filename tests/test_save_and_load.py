@@ -351,3 +351,36 @@ def test_migrated_metadata_upsert_no_duplicates(tmp_path: Path):
     rows = list(db2("Persons"))
     assert sorted(row.name for row in rows) == ["Alice", "Legacy"]
     assert list(db2("Addresses"))[0].street == "Main"
+
+
+def test_legacy_duplicate_table_rows_last_wins(tmp_path: Path):
+    """
+    Regression test: Legacy DBs can contain multiple metadata rows for the same
+    table (only 'modulename' was unique). Migration must not crash but keep the
+    last registered row, and the new table must still enforce PK 'table'.
+    """
+    db_path = tmp_path / "duplicate.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("CREATE TABLE Persons (uuid TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("INSERT INTO Persons (uuid, name) VALUES (?, ?)", ("1", "Legacy"))
+        conn.execute(
+            'CREATE TABLE __basemodels__ ("table" TEXT, modulename TEXT, pks TEXT, PRIMARY KEY (modulename))'
+        )
+        conn.execute(
+            'INSERT INTO __basemodels__ ("table", modulename, pks) VALUES (?, ?, ?)',
+            ("Persons", "some.module.Other", json.dumps(["id"])),
+        )
+        conn.execute(
+            'INSERT INTO __basemodels__ ("table", modulename, pks) VALUES (?, ?, ?)',
+            ("Persons", "tests._helper.Person", json.dumps(["uuid"])),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    db = DataBase(db_path)
+
+    assert db._db["__table_metadata__"].pks == ["table"]
+    assert db._db["__table_metadata__"].count == 1
+    assert list(db("Persons"))[0].name == "Legacy"

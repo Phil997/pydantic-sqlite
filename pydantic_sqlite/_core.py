@@ -107,20 +107,19 @@ class DataBase:
 
     def _migrate_table_metadata(self) -> None:
         """
-        Internal helper: Renames the legacy '__basemodels__' table to '__table_metadata__'
-        so that existing database files keep working without data loss.
+        Internal helper: Migrates the legacy '__basemodels__' table into the
+        '__table_metadata__' table so that existing database files keep working
+        without data loss.
+
+        The new table uses the primary key 'table'. If any legacy rows share the
+        same table name, the last row wins (upsert) - matching the previous
+        behavior where the last registered model for a table was authoritative.
         """
-        if _METADATA_TABLE in self._db.table_names():
-            # Merge legacy rows into the new table (e.g. after load() into an
-            # already-populated database), then drop the legacy table.
-            for legacy in self._db[_LEGACY_METADATA_TABLE].rows:
-                self._db[_METADATA_TABLE].upsert(dict(legacy), pk="table")
-            self._db[_LEGACY_METADATA_TABLE].drop()
-            logging.debug(f"Migrated rows from '{_LEGACY_METADATA_TABLE}' into '{_METADATA_TABLE}'")
-            return
-        self._db.rename_table(_LEGACY_METADATA_TABLE, _METADATA_TABLE)
-        self._db[_METADATA_TABLE].transform(pk="table")
-        logging.debug(f"Migrated internal metadata table '{_LEGACY_METADATA_TABLE}' to '{_METADATA_TABLE}'")
+        legacy_rows = list(self._db[_LEGACY_METADATA_TABLE].rows)
+        for legacy in legacy_rows:
+            self._db[_METADATA_TABLE].upsert(dict(legacy), pk="table")
+        self._db[_LEGACY_METADATA_TABLE].drop()
+        logging.debug(f"Migrated internal metadata table '{_LEGACY_METADATA_TABLE}' into '{_METADATA_TABLE}'")
 
     def _load_internal_metadata(self) -> None:
         """
