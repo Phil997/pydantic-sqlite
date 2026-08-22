@@ -105,49 +105,6 @@ class DataBase:
         if _METADATA_TABLE in self._db.table_names():
             self._load_internal_metadata()
 
-    def _migrate_table_metadata(self) -> None:
-        """
-        Internal helper: Migrates the legacy '__basemodels__' table into the
-        '__table_metadata__' table so that existing database files keep working
-        without data loss.
-
-        The new table uses the primary key 'table'. If any legacy rows share the
-        same table name, the last row wins (upsert) - matching the previous
-        behavior where the last registered model for a table was authoritative.
-        """
-        legacy_rows = list(self._db[_LEGACY_METADATA_TABLE].rows)
-        for legacy in legacy_rows:
-            self._db[_METADATA_TABLE].upsert(dict(legacy), pk="table")
-        self._db[_LEGACY_METADATA_TABLE].drop()
-        logging.debug(f"Migrated internal metadata table '{_LEGACY_METADATA_TABLE}' into '{_METADATA_TABLE}'")
-
-    def _load_internal_metadata(self) -> None:
-        """
-        Internal helper: Reads the metadata table and re-imports the Pydantic classes
-        to populate _table_meta and _primary_keys.
-        """
-        try:
-            for model in self._db[_METADATA_TABLE].rows:
-                parts = model["modulename"].split(".")
-                classname = parts[-1]
-                modulename = ".".join(parts[:-1])
-
-                try:
-                    my_module = importlib.import_module(modulename)
-                    basemodel_cls = getattr(my_module, classname)
-
-                    # Register in memory without persisting to DB again
-                    self._create_new_table(
-                        tablename=model["table"],
-                        basemodel_cls=basemodel_cls,
-                        pk=json.loads(model["pks"])[0],
-                        persist=False
-                    )
-                except (ModuleNotFoundError, AttributeError) as e:
-                    logging.warning(f"Could not reload model for table '{model['table']}': {e}")
-        except Exception as e:
-            logging.error(f"Failed to load internal metadata: {e}")
-
     def __call__(self, tablename: str, **kwargs) -> Generator[BaseModel, None, None]:
         """
         Yields every model in the table. They can be filterd by passing **kwargs.
@@ -283,32 +240,6 @@ class DataBase:
                 data_to_save[field_name] = nested_obj_ids
 
         self._db[tablename].upsert(data_to_save, pk=pk, foreign_keys=foreign_keys)
-
-    def _get_foreign_table_name(self, field_name: str, foreign_tables: dict) -> str:
-        """
-        Searches in the dict 'foreign_tables' for the field_name and returns the matching tablename.
-        If it is not found, raises KeyError.
-
-        Args:
-            field_name (str): The name of the field.
-            foreign_tables (dict): A dictionary of foreign tables and their mappings.
-
-        Returns:
-            str: The name of the foreign table.
-        """
-        if field_name not in foreign_tables.keys():
-            keys = list(foreign_tables.keys())
-            msg = f"detect field of Type BaseModel, but can not find '{field_name}'"
-            msg += f"in foreign_tables (Keys: {keys})"
-            raise KeyError(msg) from None
-        else:
-            foreign_table_name = foreign_tables[field_name]
-
-        if foreign_table_name not in self._db.table_names():
-            msg = f"Can not add a model, which has a foreign Key '{foreign_tables}'"
-            msg += f" to a Table '{foreign_table_name}' which does not exists"
-            raise KeyError(msg)
-        return foreign_table_name
 
     def count_entries_in_table(self, tablename: str) -> int:
         """
@@ -549,6 +480,75 @@ class DataBase:
 
             d.update({field_name: data})
         return tablemodel.basemodel_cls(**d)
+
+    def _get_foreign_table_name(self, field_name: str, foreign_tables: dict) -> str:
+        """
+        Searches in the dict 'foreign_tables' for the field_name and returns the matching tablename.
+        If it is not found, raises KeyError.
+
+        Args:
+            field_name (str): The name of the field.
+            foreign_tables (dict): A dictionary of foreign tables and their mappings.
+
+        Returns:
+            str: The name of the foreign table.
+        """
+        if field_name not in foreign_tables.keys():
+            keys = list(foreign_tables.keys())
+            msg = f"detect field of Type BaseModel, but can not find '{field_name}'"
+            msg += f"in foreign_tables (Keys: {keys})"
+            raise KeyError(msg) from None
+        else:
+            foreign_table_name = foreign_tables[field_name]
+
+        if foreign_table_name not in self._db.table_names():
+            msg = f"Can not add a model, which has a foreign Key '{foreign_tables}'"
+            msg += f" to a Table '{foreign_table_name}' which does not exists"
+            raise KeyError(msg)
+        return foreign_table_name
+
+    def _load_internal_metadata(self) -> None:
+        """
+        Internal helper: Reads the metadata table and re-imports the Pydantic classes
+        to populate _table_meta and _primary_keys.
+        """
+        try:
+            for model in self._db[_METADATA_TABLE].rows:
+                parts = model["modulename"].split(".")
+                classname = parts[-1]
+                modulename = ".".join(parts[:-1])
+
+                try:
+                    my_module = importlib.import_module(modulename)
+                    basemodel_cls = getattr(my_module, classname)
+
+                    # Register in memory without persisting to DB again
+                    self._create_new_table(
+                        tablename=model["table"],
+                        basemodel_cls=basemodel_cls,
+                        pk=json.loads(model["pks"])[0],
+                        persist=False
+                    )
+                except (ModuleNotFoundError, AttributeError) as e:
+                    logging.warning(f"Could not reload model for table '{model['table']}': {e}")
+        except Exception as e:
+            logging.error(f"Failed to load internal metadata: {e}")
+
+    def _migrate_table_metadata(self) -> None:
+        """
+        Internal helper: Migrates the legacy '__basemodels__' table into the
+        '__table_metadata__' table so that existing database files keep working
+        without data loss.
+
+        The new table uses the primary key 'table'. If any legacy rows share the
+        same table name, the last row wins (upsert) - matching the previous
+        behavior where the last registered model for a table was authoritative.
+        """
+        legacy_rows = list(self._db[_LEGACY_METADATA_TABLE].rows)
+        for legacy in legacy_rows:
+            self._db[_METADATA_TABLE].upsert(dict(legacy), pk="table")
+        self._db[_LEGACY_METADATA_TABLE].drop()
+        logging.debug(f"Migrated internal metadata table '{_LEGACY_METADATA_TABLE}' into '{_METADATA_TABLE}'")
 
     def _upsert_model_in_foreign_table(
         self, field_value: typing.Any, foreign_table_name: str, update_nested_models: bool, pk: str
