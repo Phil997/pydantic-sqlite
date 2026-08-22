@@ -186,7 +186,7 @@ class DataBase:
         )
 
         foreign_keys = []
-        for field_name, field_info in model.model_fields.items():
+        for field_name, field_info in type(model).model_fields.items():
             field_value = getattr(model, field_name)
 
             if res := self._special_conversion(field_value):  # Special Insert with SQConfig.convert
