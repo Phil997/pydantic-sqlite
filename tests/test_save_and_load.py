@@ -10,7 +10,7 @@ from testfixtures import TempDirectory
 
 from pydantic_sqlite import DataBase
 
-from ._helper import LENGTH, TEST_DB_NAME, TEST_TABLE_NAME, Person
+from ._helper import LENGTH, TEST_DB_NAME, TEST_TABLE_NAME, Address, Person
 
 
 class DummyException(Exception):
@@ -243,6 +243,7 @@ def test_legacy_metadata_migrated_on_open(tmp_path: Path):
     assert "__basemodels__" not in db._db.table_names()
     assert "__table_metadata__" in db._db.table_names()
     assert "Persons" in db._table_meta
+    assert db._db["__table_metadata__"].pks == ["table"]
 
     results = list(db("Persons"))
     assert len(results) == 1
@@ -253,6 +254,7 @@ def test_legacy_metadata_migrated_on_open(tmp_path: Path):
     db2 = DataBase(db_path)
     assert "__basemodels__" not in db2._db.table_names()
     assert "__table_metadata__" in db2._db.table_names()
+    assert db2._db["__table_metadata__"].pks == ["table"]
     assert list(db2("Persons"))[0].name == "Legacy"
 
 
@@ -319,3 +321,33 @@ def test_legacy_edit_save_reopen_roundtrip(tmp_path: Path):
     rows = list(fresh("Persons"))
     assert sorted(row.name for row in rows) == ["Alice", "Bob"]
     assert sorted(row.uuid for row in rows) == ["2", "3"]
+
+
+def test_migrated_metadata_upsert_no_duplicates(tmp_path: Path):
+    """
+    Regression test: After migrating a legacy DB (old PK 'modulename'), the
+    metadata table must enforce the new PK 'table'. Writing metadata for an
+    existing table must update instead of inserting a silent duplicate row.
+    """
+    db_path = tmp_path / "legacy_upsert.db"
+    _create_legacy_db(db_path)
+
+    db = DataBase(db_path)
+    assert db._db["__table_metadata__"].pks == ["table"]
+
+    # Update an existing table and register a new one with the same model class
+    db.add("Persons", Person(uuid="2", name="Alice"))
+    db.add("Addresses", Address(uuid="a1", street="Main", city="Berlin", zip_code="10115"))
+
+    assert db._db["__table_metadata__"].count == 2
+
+    # Reopen: metadata rows must still be unique per table
+    db2 = DataBase(db_path)
+    assert "__basemodels__" not in db2._db.table_names()
+    assert "__table_metadata__" in db2._db.table_names()
+    assert db2._db["__table_metadata__"].pks == ["table"]
+    assert db2._db["__table_metadata__"].count == 2
+
+    rows = list(db2("Persons"))
+    assert sorted(row.name for row in rows) == ["Alice", "Legacy"]
+    assert list(db2("Addresses"))[0].street == "Main"

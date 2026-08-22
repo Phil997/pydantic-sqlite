@@ -119,6 +119,7 @@ class DataBase:
             logging.debug(f"Migrated rows from '{_LEGACY_METADATA_TABLE}' into '{_METADATA_TABLE}'")
             return
         self._db.rename_table(_LEGACY_METADATA_TABLE, _METADATA_TABLE)
+        self._db[_METADATA_TABLE].transform(pk="table")
         logging.debug(f"Migrated internal metadata table '{_LEGACY_METADATA_TABLE}' to '{_METADATA_TABLE}'")
 
     def _load_internal_metadata(self) -> None:
