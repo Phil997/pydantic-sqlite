@@ -1,5 +1,22 @@
 import os
+from enum import Enum
 from typing import Any, get_args
+
+
+def normalize_for_sqlite(value: Any) -> Any:
+    """Recursively replace Enum instances with SQLite-compatible values."""
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, list):
+        return [normalize_for_sqlite(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(normalize_for_sqlite(item) for item in value)
+    if isinstance(value, dict):
+        return {
+            normalize_for_sqlite(key): normalize_for_sqlite(item)
+            for key, item in value.items()
+        }
+    return value
 
 
 def get_unique_filename(filename: str) -> str:
