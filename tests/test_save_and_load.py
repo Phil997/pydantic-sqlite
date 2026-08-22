@@ -1,4 +1,6 @@
+import json
 import os
+import sqlite3
 from pathlib import Path
 from unittest import mock
 from uuid import uuid4
@@ -8,7 +10,7 @@ from testfixtures import TempDirectory
 
 from pydantic_sqlite import DataBase
 
-from ._helper import LENGTH, TEST_DB_NAME, TEST_TABLE_NAME, Person
+from ._helper import LENGTH, TEST_DB_NAME, TEST_TABLE_NAME, Address, Person
 
 
 class DummyException(Exception):
@@ -155,3 +157,230 @@ def test_persistent_db_save(persistent_db):
 
     # Close the database connection before the test ends
     persistent_db._db.conn.close()
+
+
+def test_init_hydrates_existing_metadata(tmp_path: Path):
+    """
+    Regression test: Verifies that initializing a DataBase with an existing
+    file correctly loads metadata (fixes the 'Amnesia' bug).
+    """
+    db_path = tmp_path / "persistence_check.db"
+
+    # 1. Initialize first session and save data
+    db1 = DataBase(db_path)
+    person_data = Person(uuid=str(uuid4()), name="Persistence User")
+    db1.add(TEST_TABLE_NAME, person_data)
+
+    # 2. Initialize second session from the same file
+    # Prior to the fix, this would have empty _table_meta and fail on access
+    db2 = DataBase(db_path)
+
+    # 3. Verify access
+    # This accesses ._table_meta[TEST_TABLE_NAME] internally
+    results = list(db2(TEST_TABLE_NAME))
+
+    assert len(results) == 1
+    assert results[0].name == "Persistence User"
+    assert isinstance(results[0], Person)
+    assert TEST_TABLE_NAME in db2._table_meta
+
+
+def test_metadata_pk_collision_fix(tmp_path: Path):
+    """
+    Regression test: Verifies that multiple tables using the same Pydantic model
+    are persisted correctly. (Fixes the bug where __basemodels__ PK was 'modulename'
+    instead of 'table', causing overwrites).
+    """
+    db_path = tmp_path / "collision_check.db"
+    db = DataBase(db_path)
+
+    p1 = Person(uuid="1", name="Admin")
+    p2 = Person(uuid="2", name="User")
+
+    # Add same model type to two different tables
+    db.add("Admins", p1)
+    db.add("Users", p2)
+
+    # Reload database
+    db_new = DataBase(db_path)
+
+    # Both tables should exist in metadata
+    assert "Admins" in db_new._table_meta
+    assert "Users" in db_new._table_meta
+
+    # Data should be retrievable from both
+    assert list(db_new("Admins"))[0].name == "Admin"
+    assert list(db_new("Users"))[0].name == "User"
+
+
+def _create_legacy_db(path: Path) -> None:
+    """
+    Builds a database file in the legacy format where the metadata table was
+    named '__basemodels__' (primary key 'modulename').
+    """
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("CREATE TABLE Persons (uuid TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("INSERT INTO Persons (uuid, name) VALUES (?, ?)", ("1", "Legacy"))
+        conn.execute(
+            'CREATE TABLE __basemodels__ ("table" TEXT, modulename TEXT, pks TEXT, PRIMARY KEY (modulename))'
+        )
+        conn.execute(
+            'INSERT INTO __basemodels__ ("table", modulename, pks) VALUES (?, ?, ?)',
+            ("Persons", "tests._helper.Person", json.dumps(["uuid"])),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_legacy_metadata_migrated_on_open(tmp_path: Path):
+    db_path = tmp_path / "legacy.db"
+    _create_legacy_db(db_path)
+
+    db = DataBase(db_path)
+
+    assert "__basemodels__" not in db._db.table_names()
+    assert "__table_metadata__" in db._db.table_names()
+    assert "Persons" in db._table_meta
+    assert db._db["__table_metadata__"].pks == ["table"]
+
+    results = list(db("Persons"))
+    assert len(results) == 1
+    assert results[0].name == "Legacy"
+    assert isinstance(results[0], Person)
+
+    # Reopen: no legacy table anymore, everything still works
+    db2 = DataBase(db_path)
+    assert "__basemodels__" not in db2._db.table_names()
+    assert "__table_metadata__" in db2._db.table_names()
+    assert db2._db["__table_metadata__"].pks == ["table"]
+    assert list(db2("Persons"))[0].name == "Legacy"
+
+
+def test_both_metadata_tables_prefers_new(tmp_path: Path):
+    db_path = tmp_path / "both.db"
+    _create_legacy_db(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            'CREATE TABLE __table_metadata__ '
+            '("table" TEXT, modulename TEXT, pks TEXT, PRIMARY KEY ("table"))'
+        )
+        conn.execute(
+            'INSERT INTO __table_metadata__ ("table", modulename, pks) VALUES (?, ?, ?)',
+            ("Other", "tests._helper.Address", json.dumps(["street"])),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    db = DataBase(db_path)
+
+    # Legacy table is merged into the new one and dropped
+    assert "__basemodels__" not in db._db.table_names()
+    assert "__table_metadata__" in db._db.table_names()
+    assert "Persons" in db._table_meta
+    assert "Other" in db._table_meta
+    assert list(db("Persons"))[0].name == "Legacy"
+
+
+def test_legacy_edit_save_reopen_roundtrip(tmp_path: Path):
+    """
+    Full roundtrip: Open an existing legacy DB, remove old objects, add new ones,
+    save to a new file, then reopen it with a fresh DataBase instance.
+    The migration must have removed the legacy '__basemodels__' table.
+    """
+    legacy = tmp_path / "legacy.db"
+    _create_legacy_db(legacy)
+
+    # Load legacy DB into an in-memory instance
+    db = DataBase()
+    db.load(str(legacy))
+
+    assert "__basemodels__" not in db._db.table_names()
+    assert "__table_metadata__" in db._db.table_names()
+
+    # The legacy row is hydrated from the migrated metadata
+    assert sorted(row.name for row in db("Persons")) == ["Legacy"]
+
+    # Remove the old object and add new ones
+    assert db.delete("Persons", "1") is True
+    db.add("Persons", Person(uuid="2", name="Alice"))
+    db.add("Persons", Person(uuid="3", name="Bob"))
+
+    # Save the migrated state to a new file
+    target = tmp_path / "migrated.db"
+    db.save(str(target))
+
+    # Fresh DataBase instance opens the saved file
+    fresh = DataBase(target)
+    assert "__basemodels__" not in fresh._db.table_names()
+    assert "__table_metadata__" in fresh._db.table_names()
+
+    rows = list(fresh("Persons"))
+    assert sorted(row.name for row in rows) == ["Alice", "Bob"]
+    assert sorted(row.uuid for row in rows) == ["2", "3"]
+
+
+def test_migrated_metadata_upsert_no_duplicates(tmp_path: Path):
+    """
+    Regression test: After migrating a legacy DB (old PK 'modulename'), the
+    metadata table must enforce the new PK 'table'. Writing metadata for an
+    existing table must update instead of inserting a silent duplicate row.
+    """
+    db_path = tmp_path / "legacy_upsert.db"
+    _create_legacy_db(db_path)
+
+    db = DataBase(db_path)
+    assert db._db["__table_metadata__"].pks == ["table"]
+
+    # Update an existing table and register a new one with the same model class
+    db.add("Persons", Person(uuid="2", name="Alice"))
+    db.add("Addresses", Address(uuid="a1", street="Main", city="Berlin", zip_code="10115"))
+
+    assert db._db["__table_metadata__"].count == 2
+
+    # Reopen: metadata rows must still be unique per table
+    db2 = DataBase(db_path)
+    assert "__basemodels__" not in db2._db.table_names()
+    assert "__table_metadata__" in db2._db.table_names()
+    assert db2._db["__table_metadata__"].pks == ["table"]
+    assert db2._db["__table_metadata__"].count == 2
+
+    rows = list(db2("Persons"))
+    assert sorted(row.name for row in rows) == ["Alice", "Legacy"]
+    assert list(db2("Addresses"))[0].street == "Main"
+
+
+def test_legacy_duplicate_table_rows_last_wins(tmp_path: Path):
+    """
+    Regression test: Legacy DBs can contain multiple metadata rows for the same
+    table (only 'modulename' was unique). Migration must not crash but keep the
+    last registered row, and the new table must still enforce PK 'table'.
+    """
+    db_path = tmp_path / "duplicate.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("CREATE TABLE Persons (uuid TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("INSERT INTO Persons (uuid, name) VALUES (?, ?)", ("1", "Legacy"))
+        conn.execute(
+            'CREATE TABLE __basemodels__ ("table" TEXT, modulename TEXT, pks TEXT, PRIMARY KEY (modulename))'
+        )
+        conn.execute(
+            'INSERT INTO __basemodels__ ("table", modulename, pks) VALUES (?, ?, ?)',
+            ("Persons", "some.module.Other", json.dumps(["id"])),
+        )
+        conn.execute(
+            'INSERT INTO __basemodels__ ("table", modulename, pks) VALUES (?, ?, ?)',
+            ("Persons", "tests._helper.Person", json.dumps(["uuid"])),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    db = DataBase(db_path)
+
+    assert db._db["__table_metadata__"].pks == ["table"]
+    assert db._db["__table_metadata__"].count == 1
+    assert list(db("Persons"))[0].name == "Legacy"

@@ -6,7 +6,8 @@ from pydantic import BaseModel, field_validator
 
 from pydantic_sqlite import DataBase
 
-from ._helper import Car, CarRegistration, Employee, Garage, Person, Portfolio, Position, Team
+from ._helper import (Car, CarRegistration, Employee, Garage, Person,
+                      Portfolio, Position, Team)
 
 
 class Hello(BaseModel):
