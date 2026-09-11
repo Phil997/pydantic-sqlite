@@ -127,7 +127,7 @@ The following field types are supported and can be stored and loaded through a P
 | `set[T]` | Stored as JSON and reconstructed as a set |
 | `dict[K, V]` | Primitive values are stored as JSON |
 | `Enum` and `StrEnum` | The Enum value is stored and the Enum member is reconstructed |
-| Nested `BaseModel` | Requires a corresponding `foreign_tables` entry; see [Nested Models](advanced-usage.md#nested-models-with-foreign-keys) |
+| Nested `BaseModel` | Requires a `foreign_tables` entry; see [Nested Models](advanced-usage.md#nested-models-with-foreign-keys). Use `(table, pk)` tuples when the nested model's PK is not `"uuid"`. |
 
 `Any` is also supported for storage. Since it carries no concrete type information, an Enum stored through an `Any` field is loaded as its value rather than as an Enum member. Enum fields should therefore be explicitly typed when the Enum type must be preserved.
 

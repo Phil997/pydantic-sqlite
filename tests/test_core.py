@@ -137,11 +137,11 @@ def test_get_foreign_table_name_missing_field(sample_db: DataBase):
         sample_db._get_foreign_table_name("field", {"other_field": "Humans"})
 
 
-def test_get_foreign_table_name_missing_table(sample_db: DataBase):
+def test_get_foreign_table_name_tuple_value(sample_db: DataBase):
     person = Person(uuid="abc", name="unitest")
     employee = Employee(uuid="xyz", person=person)
     sample_db.add("Humans", person)
     sample_db.add("Employee", employee, foreign_tables={"person": "Humans"})
 
-    with pytest.raises(KeyError, match="to a Table 'NonExistentTable' which does not exists"):
-        sample_db._get_foreign_table_name("field", {"field": "NonExistentTable"})
+    tablename = sample_db._get_foreign_table_name("field", {"field": ("Positions", "symbol")})
+    assert tablename == "Positions"

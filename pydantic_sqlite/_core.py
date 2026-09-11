@@ -143,7 +143,7 @@ class DataBase:
             self,
             tablename: str,
             model: BaseModel,
-            foreign_tables: dict | None = None,
+            foreign_tables: dict[str, str | tuple[str, str]] | None = None,
             update_nested_models: bool = True,
             pk: str = "uuid"
     ) -> None:
@@ -153,7 +153,8 @@ class DataBase:
         Args:
             tablename (str): The name of the table.
             model (BaseModel): The model to be added, as a Pydantic BaseModel instance.
-            foreign_tables (dict, optional): A dictionary of foreign tables and their mappings.
+            foreign_tables (dict[str, str | tuple[str, str]], optional): A dictionary mapping field names
+                to foreign table names (str defaults PK to "uuid") or (table_name, pk) tuples.
             update_nested_models (bool, optional): Whether to update nested models if they already exist.
             pk (str, optional): The primary key field name. Defaults to "uuid".
 
@@ -188,6 +189,7 @@ class DataBase:
         )
 
         foreign_keys = []
+        auto_created: set[str] = set()
         for field_name, field_info in type(model).model_fields.items():
             field_value = getattr(model, field_name)
 
@@ -200,8 +202,8 @@ class DataBase:
             elif get_origin(field_info.annotation) is list:
                 obj = typing.get_args(field_info.annotation)[0]
                 if inspect.isclass(obj) and issubclass(obj, BaseModel):
-                    _foreign_table_name = self._get_foreign_table_name(field_name, foreign_tables)
-                    _foreign_pk = self._primary_keys[_foreign_table_name]
+                    _foreign_table_name, _foreign_pk = self._resolve_foreign_table(
+                        field_name, foreign_tables, obj, auto_created)
                     foreign_keys.append((field_name, _foreign_table_name, _foreign_pk))
 
                     data_to_save[field_name] = [getattr(m, _foreign_pk) for m in field_value]
@@ -209,8 +211,8 @@ class DataBase:
             elif get_origin(field_info.annotation) is dict:
                 args = typing.get_args(field_info.annotation)
                 if inspect.isclass(args[1]) and issubclass(args[1], BaseModel):
-                    _foreign_table_name = self._get_foreign_table_name(field_name, foreign_tables)
-                    _foreign_pk = self._primary_keys[_foreign_table_name]
+                    _foreign_table_name, _foreign_pk = self._resolve_foreign_table(
+                        field_name, foreign_tables, args[1], auto_created)
                     foreign_keys.append((field_name, _foreign_table_name, _foreign_pk))
 
                     data_to_save[field_name] = json.dumps({
@@ -221,11 +223,8 @@ class DataBase:
                     })
 
             elif inspect.isclass(field_info.annotation) and issubclass(field_info.annotation, BaseModel):
-                # the model has got a field which is of type BaseModel, so this filed must be in a foreign table
-                # if the field is already in the Table it continues, but if is it not in the table it will add this
-                # to the table recursive call to self.add
-                _foreign_table_name = self._get_foreign_table_name(field_name, foreign_tables)
-                _foreign_pk = self._primary_keys[_foreign_table_name]
+                _foreign_table_name, _foreign_pk = self._resolve_foreign_table(
+                    field_name, foreign_tables, field_info.annotation, auto_created)
                 foreign_keys.append((field_name, _foreign_table_name, _foreign_pk))
 
                 nested_obj_ids = self._upsert_model_in_foreign_table(
@@ -236,7 +235,9 @@ class DataBase:
 
                 data_to_save[field_name] = nested_obj_ids
 
-        self._db[tablename].upsert(data_to_save, pk=pk, foreign_keys=foreign_keys)
+        for _table_name in auto_created:
+            self._ensure_physical_foreign_table(_table_name)
+        self._db[tablename].upsert(data_to_save, pk=pk, foreign_keys=foreign_keys, alter=True)
 
     def add_index(
         self,
@@ -518,14 +519,14 @@ class DataBase:
             d.update({field_name: data})
         return tablemodel.basemodel_cls(**d)
 
-    def _get_foreign_table_name(self, field_name: str, foreign_tables: dict) -> str:
+    def _get_foreign_table_name(self, field_name: str, foreign_tables: dict[str, str | tuple[str, str]]) -> str:
         """
         Searches in the dict 'foreign_tables' for the field_name and returns the matching tablename.
         If it is not found, raises KeyError.
 
         Args:
             field_name (str): The name of the field.
-            foreign_tables (dict): A dictionary of foreign tables and their mappings.
+            foreign_tables (dict[str, str | tuple[str, str]]): Foreign table mappings.
 
         Returns:
             str: The name of the foreign table.
@@ -535,14 +536,54 @@ class DataBase:
             msg = f"detect field of Type BaseModel, but can not find '{field_name}'"
             msg += f"in foreign_tables (Keys: {keys})"
             raise KeyError(msg) from None
-        else:
-            foreign_table_name = foreign_tables[field_name]
+        value = foreign_tables[field_name]
+        if isinstance(value, tuple):
+            return value[0]
+        return value
 
-        if foreign_table_name not in self._db.table_names():
-            msg = f"Can not add a model, which has a foreign Key '{foreign_tables}'"
-            msg += f" to a Table '{foreign_table_name}' which does not exists"
-            raise KeyError(msg)
-        return foreign_table_name
+    def _resolve_foreign_table(
+        self,
+        field_name: str,
+        foreign_tables: dict[str, str | tuple[str, str]],
+        model_cls: ModelMetaclass,
+        auto_created: set[str]
+    ) -> tuple[str, str]:
+        """
+        Resolves a foreign table for a nested field, auto-creating metadata if needed.
+
+        Args:
+            field_name (str): The name of the field.
+            foreign_tables (dict[str, str | tuple[str, str]]): Foreign table mappings.
+            model_cls (ModelMetaclass): The nested model class for the foreign table.
+            auto_created (set[str]): Set to add newly registered foreign table names to.
+
+        Returns:
+            tuple[str, str]: (table_name, primary_key_field_name).
+        """
+        table_name = self._get_foreign_table_name(field_name, foreign_tables)
+        if table_name in self._primary_keys:
+            return table_name, self._primary_keys[table_name]
+
+        value = foreign_tables[field_name]
+        pk = value[1] if isinstance(value, tuple) else "uuid"
+        self._create_new_table(tablename=table_name, basemodel_cls=model_cls, pk=pk)
+        auto_created.add(table_name)
+        return table_name, pk
+
+    def _ensure_physical_foreign_table(self, table_name: str) -> None:
+        """
+        Ensures the physical SQLite table exists for an auto-created foreign table.
+        Creates a bare table with just the PK column if it doesn't exist.
+
+        Args:
+            table_name (str): The name of the foreign table.
+        """
+        if table_name in self._db.table_names():
+            return
+        pk = self._primary_keys[table_name]
+        pk_annotation = self._table_meta[table_name].basemodel_cls.model_fields[pk].annotation
+        col_type = int if pk_annotation is int or pk_annotation is bool else str
+        self._db[table_name].create({pk: col_type}, pk=pk)
 
     def _load_internal_metadata(self) -> None:
         """

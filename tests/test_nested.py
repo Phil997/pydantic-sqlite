@@ -251,3 +251,41 @@ def test_dict_primitives_roundtrip():
     result = db.model_from_table("ServerConfigs", "1")
     assert result.settings == {"host": "localhost"}
     assert result.ports == {"web": 8080}
+
+
+def test_dict_nested_auto_create(tmp_path):
+    db = DataBase()
+    db.add(
+        "Portfolios",
+        Portfolio(strategy_id="m"),
+        pk="strategy_id",
+        foreign_tables={"positions": ("Positions", "symbol")},
+    )
+    assert db.model_from_table("Portfolios", "m").positions == {}
+
+    position = Position(symbol="AAPL", quantity=4, avg_cost=Decimal("25.5"))
+    db.add("Positions", position, pk="symbol")
+    db.add(
+        "Portfolios",
+        Portfolio(strategy_id="m", positions={"AAPL": position}),
+        pk="strategy_id",
+        foreign_tables={"positions": ("Positions", "symbol")},
+    )
+    db.save(str(tmp_path / "test.db"))
+
+    db2 = DataBase()
+    db2.load(str(tmp_path / "test.db"))
+    record = db2.model_from_table("Portfolios", "m")
+    assert record.positions["AAPL"].quantity == 4
+    assert record.positions["AAPL"].avg_cost == Decimal("25.5")
+
+
+def test_nested_single_auto_create_uuid():
+    db = DataBase()
+    db.add(
+        "Employees",
+        Employee(uuid="xyz", person=Person(uuid="abc", name="unitest")),
+        foreign_tables={"person": "Persons"},
+    )
+    record = db.model_from_table("Employees", "xyz")
+    assert record.person.name == "unitest"
