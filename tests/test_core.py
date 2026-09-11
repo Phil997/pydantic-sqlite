@@ -26,6 +26,49 @@ def test_add_3_items():
     assert db.count_entries_in_table("Humans") == 3
 
 
+def test_add_index(sample_db: DataBase):
+    sample_db.add("Persons", Person(uuid="1", name="Alice"))
+    sample_db.add_index("Persons", ["name"])
+
+    indexes = [
+        row[1]
+        for row in sample_db._db.conn.execute("PRAGMA index_list('Persons')")
+        if not row[1].startswith("sqlite_autoindex")
+    ]
+    assert len(indexes) == 1
+
+
+def test_add_index_if_not_exists(sample_db: DataBase):
+    sample_db.add("Persons", Person(uuid="1", name="Alice"))
+    sample_db.add_index("Persons", ["name"])
+    sample_db.add_index("Persons", ["name"])
+
+    indexes = [
+        row[1]
+        for row in sample_db._db.conn.execute("PRAGMA index_list('Persons')")
+        if not row[1].startswith("sqlite_autoindex")
+    ]
+    assert len(indexes) == 1
+
+
+def test_add_index_with_name_and_unique(sample_db: DataBase):
+    sample_db.add("Persons", Person(uuid="1", name="Alice"))
+    sample_db.add_index("Persons", ["name"], index_name="idx_person_name", unique=True)
+
+    index_rows = [
+        row
+        for row in sample_db._db.conn.execute("PRAGMA index_list('Persons')")
+        if not row[1].startswith("sqlite_autoindex")
+    ]
+    assert [row[1] for row in index_rows] == ["idx_person_name"]
+    assert [row[2] for row in index_rows] == [1]
+
+
+def test_add_index_unknown_table(sample_db: DataBase):
+    with pytest.raises(KeyError, match="Can't find table 'UnknownTable' in Database"):
+        sample_db.add_index("UnknownTable", ["name"])
+
+
 def test_alternative_primary_key(sample_db: DataBase):
     car = Car(series_number="1234", model="Volkswagen Golf")
     sample_db.add("Cars", car, pk='series_number')

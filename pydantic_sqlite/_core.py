@@ -23,6 +23,8 @@ SPECIALTYPE = [Any, Literal, Union]
 _METADATA_TABLE = "__table_metadata__"
 _LEGACY_METADATA_TABLE = "__basemodels__"
 
+_MODEL_REGISTRY: dict[str, ModelMetaclass] = {}
+
 
 class TableMetaInfo:
     """
@@ -236,6 +238,35 @@ class DataBase:
 
         self._db[tablename].upsert(data_to_save, pk=pk, foreign_keys=foreign_keys)
 
+    def add_index(
+        self,
+        tablename: str,
+        columns: list[str],
+        index_name: str | None = None,
+        unique: bool = False,
+        if_not_exists: bool = True,
+    ) -> None:
+        """
+        Creates an index on the given columns of the table.
+
+        Useful for speeding up queries that filter or sort by columns such as foreign keys or timestamps
+
+        Args:
+            tablename (str): The name of the table.
+            columns (list[str]): The columns to index.
+            index_name (str, optional): The name of the index. If not given, derives it from the tablename and columns
+            unique (bool): Whether the index should be unique. Defaults to False.
+            if_not_exists (bool): Only create the index if it does not exist yet.
+        """
+        if tablename not in self._table_meta:
+            raise KeyError(f"Can't find table '{tablename}' in Database")
+        self._db[tablename].create_index(
+            columns,
+            index_name=index_name,
+            unique=unique,
+            if_not_exists=if_not_exists,
+        )
+
     def close(self) -> None:
         """
         Closes the underlying SQLite connection. This applies to file-based and in-memory databases alike.
@@ -425,6 +456,7 @@ class DataBase:
         _m = TableMetaInfo(table=tablename, basemodel_cls=basemodel_cls, pks=[pk])
         self._table_meta.update({tablename: _m})
         self._primary_keys.update({tablename: pk})
+        _MODEL_REGISTRY[_m.modulename] = basemodel_cls
 
         if persist:
             self._db[_METADATA_TABLE].upsert(_m.data(), pk="table")
@@ -519,13 +551,15 @@ class DataBase:
         """
         try:
             for model in self._db[_METADATA_TABLE].rows:
-                parts = model["modulename"].split(".")
-                classname = parts[-1]
-                modulename = ".".join(parts[:-1])
+                modulename = model["modulename"]
 
                 try:
-                    my_module = importlib.import_module(modulename)
-                    basemodel_cls = getattr(my_module, classname)
+                    basemodel_cls = _MODEL_REGISTRY.get(modulename)
+                    if basemodel_cls is None:
+                        parts = modulename.split(".")
+                        classname = parts[-1]
+                        module_name = ".".join(parts[:-1])
+                        basemodel_cls = getattr(importlib.import_module(module_name), classname)
 
                     # Register in memory without persisting to DB again
                     self._create_new_table(
@@ -535,7 +569,10 @@ class DataBase:
                         persist=False
                     )
                 except (ModuleNotFoundError, AttributeError) as e:
-                    logging.warning(f"Could not reload model for table '{model['table']}': {e}")
+                    logging.warning(
+                        f"Could not reload model for table '{model['table']}': {e}. "
+                        f"Make sure the model class '{modulename}' is importable "
+                        "or has been registered before loading.")
         except Exception as e:
             logging.error(f"Failed to load internal metadata: {e}")
 

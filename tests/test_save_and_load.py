@@ -407,3 +407,69 @@ def test_legacy_duplicate_table_rows_last_wins(tmp_path: Path):
     assert db._db["__table_metadata__"].pks == ["table"]
     assert db._db["__table_metadata__"].count == 1
     assert list(db("Persons"))[0].name == "Legacy"
+
+
+def _create_db_with_unregistered_metadata(path: Path, modulename: str) -> None:
+    """Creates a database file whose metadata references a module that cannot be imported."""
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("CREATE TABLE Persons (uuid TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("INSERT INTO Persons (uuid, name) VALUES (?, ?)", ("1", "Registered"))
+        conn.execute(
+            'CREATE TABLE __table_metadata__ ("table" TEXT, modulename TEXT, pks TEXT, PRIMARY KEY ("table"))'
+        )
+        conn.execute(
+            'INSERT INTO __table_metadata__ ("table", modulename, pks) VALUES (?, ?, ?)',
+            ("Persons", modulename, json.dumps(["uuid"])),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_load_skips_unregistered_model(tmp_path: Path):
+    db_path = tmp_path / "unregistered.db"
+    _create_db_with_unregistered_metadata(db_path, "some.module.Person")
+
+    db = DataBase(db_path)
+
+    assert "Persons" not in db._table_meta
+
+
+def test_load_with_registered_model(tmp_path: Path):
+    import pydantic_sqlite._core as core
+
+    db_path = tmp_path / "registered.db"
+    _create_db_with_unregistered_metadata(db_path, "some.module.Person")
+
+    core._MODEL_REGISTRY["some.module.Person"] = Person
+    try:
+        db = DataBase(db_path)
+
+        assert "Persons" in db._table_meta
+        results = list(db("Persons"))
+        assert len(results) == 1
+        assert results[0].name == "Registered"
+        assert isinstance(results[0], Person)
+    finally:
+        core._MODEL_REGISTRY.pop("some.module.Person", None)
+
+
+def test_load_prefers_registered_model(tmp_path: Path):
+    import pydantic_sqlite._core as core
+
+    db_path = tmp_path / "prefer_registered.db"
+    _create_db_with_unregistered_metadata(db_path, "some.module.Person")
+
+    core._MODEL_REGISTRY["some.module.Person"] = Person
+    try:
+        with mock.patch(
+            "pydantic_sqlite._core.importlib.import_module",
+            side_effect=ImportError("must not be imported"),
+        ):
+            db = DataBase(db_path)
+
+        assert "Persons" in db._table_meta
+        assert isinstance(list(db("Persons"))[0], Person)
+    finally:
+        core._MODEL_REGISTRY.pop("some.module.Person", None)

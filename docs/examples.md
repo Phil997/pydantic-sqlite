@@ -12,7 +12,7 @@ A basic example showing CRUD operations with a simple model.
 - Since the model doesn't have a `uuid` field, we tell pydantic-sqlite to use `contact_id` as the primary key with `pk="contact_id"`
 - When we query the database, we get back `Contact` objects, not raw dictionaries
 - Updating is simple: add the same ID with new data (upsert)
-- The data persists to a file with `save()`
+- Since the database is file-backed (`DataBase("contacts.db")`), all changes are persisted to disk automatically
 
 ```python
 from pydantic import BaseModel
@@ -51,8 +51,8 @@ db.add("Contacts", updated, pk="contact_id")
 alice = db.model_from_table("Contacts", "1")
 print(f"\nUpdated: {alice.name}")  # Output: Updated: Alice Smith
 
-# Save to disk
-db.save("contacts.db")
+# Everything is already saved to disk automatically - the connection is done
+db.close()
 ```
 
 ## Example 2: Blog with Posts and Tags
@@ -137,7 +137,7 @@ for post in db("Posts"):
     if post.author == "Alice":
         print(f"  - {post.title}")
 
-db.save("blog.db")
+db.close()
 ```
 
 ## Example 3: Multi-level Nesting with Custom Primary Keys
@@ -215,7 +215,7 @@ for c in db("Cars"):
     print(f"  Engine: {c.engine.type} ({c.engine.horsepower} hp)")
     print(f"  Wheels: {len(c.wheels)} x {c.wheels[0].diameter}\" ({c.wheels[0].width}\" width)")
 
-db.save("cars.db")
+db.close()
 ```
 
 ## Example 4: Using FailSafeDataBase for Error Recovery
@@ -344,7 +344,7 @@ for loc in db("Locations"):
     # Output: Berlin: (52.52, 13.4)
     # Output: Paris: (48.86, 2.35)
 
-db.save("locations.db")
+db.close()
 ```
 
 ## Example 6: Querying and Filtering
@@ -409,7 +409,7 @@ for student in db(
 total = db.count_entries_in_table("Students")
 print(f"\nTotal students: {total}")  # Output: 4
 
-db.save("school.db")
+db.close()
 ```
 
 ## Example 7: Deleting Consumed Work-Queue Entries
