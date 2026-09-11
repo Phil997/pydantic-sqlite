@@ -1,4 +1,7 @@
+from decimal import Decimal
+
 import pytest
+from pydantic import BaseModel
 
 from pydantic_sqlite import DataBase
 
@@ -15,6 +18,23 @@ def test_add():
 
     for x in db('Persons'):
         assert isinstance(x, Person)
+
+
+def test_decimal_precision_roundtrip(tmp_path):
+    class Price(BaseModel):
+        uuid: str
+        amount: Decimal
+
+    value = Decimal("1234567890.123456789012345678")
+    db = DataBase()
+    db.add("Prices", Price(uuid="1", amount=value))
+
+    assert db.model_from_table("Prices", "1").amount == value
+
+    db.save(str(tmp_path / "test.db"))
+    db2 = DataBase()
+    db2.load(str(tmp_path / "test.db"))
+    assert db2.model_from_table("Prices", "1").amount == value
 
 
 def test_add_3_items():
