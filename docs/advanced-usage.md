@@ -21,11 +21,11 @@ class Person(BaseModel):
 
 db = DataBase()
 
-# First, add the related Address to its table
+# Optionally add the related Address first (not required — when the nested model's PK is "uuid", the default, pydantic-sqlite auto-creates the foreign table on the first add)
 address = Address(uuid="addr-1", street="123 Main St", city="Berlin", country="Germany")
 db.add("Addresses", address)
 
-# Then add Person with foreign_tables parameter
+# Add Person with foreign_tables parameter (plain str = PK defaults to "uuid")
 person = Person(uuid="person-1", name="Alice", address=address)
 db.add("Persons", person, foreign_tables={"address": "Addresses"})
 
@@ -190,13 +190,13 @@ class Portfolio(BaseModel):
 
 db = DataBase()
 
-# First, add the related Position to its table
+# First, add the related Position to its table (or omit — auto-created when using the tuple form to declare the primary key)
 position = Position(symbol="AAPL", quantity=4, avg_cost=Decimal("25.5"))
 db.add("Positions", position, pk="symbol")
 
-# Then add Portfolio with foreign_tables parameter
+# Add Portfolio with foreign_tables parameter (tuple form when PK is not "uuid")
 portfolio = Portfolio(strategy_id="m", positions={"AAPL": position})
-db.add("Portfolios", portfolio, pk="strategy_id", foreign_tables={"positions": "Positions"})
+db.add("Portfolios", portfolio, pk="strategy_id", foreign_tables={"positions": ("Positions", "symbol")})
 
 # Retrieve - the Position objects are fully reconstructed
 record = db.model_from_table("Portfolios", "m")
@@ -207,13 +207,41 @@ Dict keys may be arbitrary labels and do not have to match the primary keys of t
 
 ```python
 portfolio = Portfolio(strategy_id="m", positions={"main": position})
-db.add("Portfolios", portfolio, pk="strategy_id", foreign_tables={"positions": "Positions"})
+db.add("Portfolios", portfolio, pk="strategy_id", foreign_tables={"positions": ("Positions", "symbol")})
 
 record = db.model_from_table("Portfolios", "m")
 print(record.positions["main"].symbol)  # AAPL
 ```
 
 `dict[str, Primitive]` fields (e.g. `dict[str, str]`) also round-trip correctly without any `foreign_tables` entry.
+
+## Auto-Created Foreign Tables
+
+Foreign tables no longer need to exist before they are first referenced. Like host tables, they are created automatically from the nested model's type annotation on the first `add()`. This works for `BaseModel`, `list[BaseModel]` and `dict[str, BaseModel]` fields, even when the collection is empty:
+
+```python
+db = DataBase()
+
+# Empty portfolio — the "Positions" table is created on the fly
+portfolio = Portfolio(strategy_id="m")
+db.add("Portfolios", portfolio, pk="strategy_id", foreign_tables={"positions": ("Positions", "symbol")})
+
+# Positions can be added afterwards, and re-adding the portfolio automatically stores the {key: primary_key} mapping
+db.add("Positions", Position(symbol="AAPL", quantity=4), pk="symbol")
+record = db.model_from_table("Portfolios", "m")
+print(record.positions)  # {}
+```
+
+### Declaring the primary key
+
+Each `foreign_tables` entry can be either:
+
+- a plain table name (`str`) — the primary key defaults to `"uuid"`; the nested model must have a `uuid` field
+- a `(table_name, pk)` tuple — declares the primary key explicitly, as above
+
+Use the tuple form whenever the nested model's primary key is not `"uuid"`. Deeper nested levels (a foreign table whose own model contains further nested `BaseModel`s) still need to be registered before the enclosing table is added, because their foreign table names are not derivable from the type annotation alone.
+
+When a model gains new fields, `add()` extends the existing table with the missing columns automatically instead of raising a "no such column" error.
 
 ## SQConfig: Custom Object Conversion
 

@@ -1,4 +1,7 @@
+from decimal import Decimal
+
 import pytest
+from pydantic import BaseModel
 
 from pydantic_sqlite import DataBase
 
@@ -17,6 +20,23 @@ def test_add():
         assert isinstance(x, Person)
 
 
+def test_decimal_precision_roundtrip(tmp_path):
+    class Price(BaseModel):
+        uuid: str
+        amount: Decimal
+
+    value = Decimal("1234567890.123456789012345678")
+    db = DataBase()
+    db.add("Prices", Price(uuid="1", amount=value))
+
+    assert db.model_from_table("Prices", "1").amount == value
+
+    db.save(str(tmp_path / "test.db"))
+    db2 = DataBase()
+    db2.load(str(tmp_path / "test.db"))
+    assert db2.model_from_table("Prices", "1").amount == value
+
+
 def test_add_3_items():
     db = DataBase()
     db.add("Humans", Person(uuid="1234", name="Han Solo"), pk='uuid')
@@ -24,6 +44,49 @@ def test_add_3_items():
     db.add("Humans", Person(uuid="abcd", name="Yoda"), pk='uuid')
 
     assert db.count_entries_in_table("Humans") == 3
+
+
+def test_add_index(sample_db: DataBase):
+    sample_db.add("Persons", Person(uuid="1", name="Alice"))
+    sample_db.add_index("Persons", ["name"])
+
+    indexes = [
+        row[1]
+        for row in sample_db._db.conn.execute("PRAGMA index_list('Persons')")
+        if not row[1].startswith("sqlite_autoindex")
+    ]
+    assert len(indexes) == 1
+
+
+def test_add_index_if_not_exists(sample_db: DataBase):
+    sample_db.add("Persons", Person(uuid="1", name="Alice"))
+    sample_db.add_index("Persons", ["name"])
+    sample_db.add_index("Persons", ["name"])
+
+    indexes = [
+        row[1]
+        for row in sample_db._db.conn.execute("PRAGMA index_list('Persons')")
+        if not row[1].startswith("sqlite_autoindex")
+    ]
+    assert len(indexes) == 1
+
+
+def test_add_index_with_name_and_unique(sample_db: DataBase):
+    sample_db.add("Persons", Person(uuid="1", name="Alice"))
+    sample_db.add_index("Persons", ["name"], index_name="idx_person_name", unique=True)
+
+    index_rows = [
+        row
+        for row in sample_db._db.conn.execute("PRAGMA index_list('Persons')")
+        if not row[1].startswith("sqlite_autoindex")
+    ]
+    assert [row[1] for row in index_rows] == ["idx_person_name"]
+    assert [row[2] for row in index_rows] == [1]
+
+
+def test_add_index_unknown_table(sample_db: DataBase):
+    with pytest.raises(KeyError, match="Can't find table 'UnknownTable' in Database"):
+        sample_db.add_index("UnknownTable", ["name"])
 
 
 def test_alternative_primary_key(sample_db: DataBase):
@@ -94,11 +157,11 @@ def test_get_foreign_table_name_missing_field(sample_db: DataBase):
         sample_db._get_foreign_table_name("field", {"other_field": "Humans"})
 
 
-def test_get_foreign_table_name_missing_table(sample_db: DataBase):
+def test_get_foreign_table_name_tuple_value(sample_db: DataBase):
     person = Person(uuid="abc", name="unitest")
     employee = Employee(uuid="xyz", person=person)
     sample_db.add("Humans", person)
     sample_db.add("Employee", employee, foreign_tables={"person": "Humans"})
 
-    with pytest.raises(KeyError, match="to a Table 'NonExistentTable' which does not exists"):
-        sample_db._get_foreign_table_name("field", {"field": "NonExistentTable"})
+    tablename = sample_db._get_foreign_table_name("field", {"field": ("Positions", "symbol")})
+    assert tablename == "Positions"

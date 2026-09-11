@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 from testfixtures import TempDirectory
 
-from pydantic_sqlite import DataBase
+from pydantic_sqlite import DataBase, ModelLoadError
 
 from ._helper import LENGTH, TEST_DB_NAME, TEST_TABLE_NAME, Address, Person
 
@@ -146,17 +146,40 @@ def test_save_and_load_path(tmp_path: Path, sample_db: DataBase):
 def test_persistent_db_save(persistent_db):
     filename = persistent_db._db.conn.execute("PRAGMA database_list").fetchone()[2]
 
-    with mock.patch("logging.warning") as mock_warning:
+    with mock.patch("pydantic_sqlite._core.logger") as mock_logger:
         persistent_db.save(TEST_DB_NAME)
 
-        mock_warning.assert_called_once_with(
+        mock_logger.warning.assert_called_once_with(
             f"database is persistent, already stored in a file: {filename}"
         )
         # Verify no file operations were performed
         assert not os.path.exists("_backup.db")
 
     # Close the database connection before the test ends
-    persistent_db._db.conn.close()
+    persistent_db.close()
+
+
+def test_close(tmp_path: Path):
+    db = DataBase(filename_or_conn=str(tmp_path / TEST_DB_NAME))
+    db.close()
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        db._db.conn.execute("SELECT 1")
+
+
+def test_close_in_memory():
+    db = DataBase()
+    assert db.filename == ":memory:"
+    db.close()
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        db._db.conn.execute("SELECT 1")
+
+
+def test_close_idempotent(tmp_path: Path):
+    db = DataBase(filename_or_conn=str(tmp_path / TEST_DB_NAME))
+    db.close()
+    db.close()
 
 
 def test_init_hydrates_existing_metadata(tmp_path: Path):
@@ -384,3 +407,124 @@ def test_legacy_duplicate_table_rows_last_wins(tmp_path: Path):
     assert db._db["__table_metadata__"].pks == ["table"]
     assert db._db["__table_metadata__"].count == 1
     assert list(db("Persons"))[0].name == "Legacy"
+
+
+def _create_db_with_unregistered_metadata(path: Path, modulename: str) -> None:
+    """Creates a database file whose metadata references a module that cannot be imported."""
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("CREATE TABLE Persons (uuid TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("INSERT INTO Persons (uuid, name) VALUES (?, ?)", ("1", "Registered"))
+        conn.execute(
+            'CREATE TABLE __table_metadata__ ("table" TEXT, modulename TEXT, pks TEXT, PRIMARY KEY ("table"))'
+        )
+        conn.execute(
+            'INSERT INTO __table_metadata__ ("table", modulename, pks) VALUES (?, ?, ?)',
+            ("Persons", modulename, json.dumps(["uuid"])),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_load_skips_unregistered_model(tmp_path: Path):
+    db_path = tmp_path / "unregistered.db"
+    _create_db_with_unregistered_metadata(db_path, "some.module.Person")
+
+    db = DataBase(db_path)
+
+    assert "Persons" not in db._table_meta
+
+
+def test_load_with_registered_model(tmp_path: Path):
+    import pydantic_sqlite._core as core
+
+    db_path = tmp_path / "registered.db"
+    _create_db_with_unregistered_metadata(db_path, "some.module.Person")
+
+    core._MODEL_REGISTRY["some.module.Person"] = Person
+    try:
+        db = DataBase(db_path)
+
+        assert "Persons" in db._table_meta
+        results = list(db("Persons"))
+        assert len(results) == 1
+        assert results[0].name == "Registered"
+        assert isinstance(results[0], Person)
+    finally:
+        core._MODEL_REGISTRY.pop("some.module.Person", None)
+
+
+def test_load_prefers_registered_model(tmp_path: Path):
+    import pydantic_sqlite._core as core
+
+    db_path = tmp_path / "prefer_registered.db"
+    _create_db_with_unregistered_metadata(db_path, "some.module.Person")
+
+    core._MODEL_REGISTRY["some.module.Person"] = Person
+    try:
+        with mock.patch(
+            "pydantic_sqlite._core.importlib.import_module",
+            side_effect=ImportError("must not be imported"),
+        ):
+            db = DataBase(db_path)
+
+        assert "Persons" in db._table_meta
+        assert isinstance(list(db("Persons"))[0], Person)
+    finally:
+        core._MODEL_REGISTRY.pop("some.module.Person", None)
+
+
+def test_load_on_error_skip(tmp_path: Path):
+    db_path = tmp_path / "on_error_skip.db"
+    _create_db_with_unregistered_metadata(db_path, "some.module.Person")
+
+    db = DataBase()
+    db.load(db_path, on_error="skip")
+    assert "Persons" not in db._table_meta
+
+
+def test_load_on_error_raise(tmp_path: Path):
+    db_path = tmp_path / "on_error_raise.db"
+    _create_db_with_unregistered_metadata(db_path, "some.module.Person")
+
+    db = DataBase()
+    with pytest.raises(ModelLoadError, match="Persons"):
+        db.load(db_path, on_error="raise")
+
+
+def test_load_on_error_warn(tmp_path: Path, caplog):
+    db_path = tmp_path / "on_error_warn.db"
+    _create_db_with_unregistered_metadata(db_path, "some.module.Person")
+
+    db = DataBase()
+    db.load(db_path, on_error="warn")
+
+    assert "Persons" not in db._table_meta
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelname == "WARNING"
+    assert "Could not reload model for table 'Persons'" in caplog.records[0].message
+
+
+def test_load_invalid_pks_logs_error(tmp_path: Path, caplog):
+    db_path = tmp_path / "invalid_pks.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("CREATE TABLE Persons (uuid TEXT PRIMARY KEY, name TEXT)")
+        conn.execute(
+            'CREATE TABLE __table_metadata__ ("table" TEXT, modulename TEXT, pks TEXT, PRIMARY KEY ("table"))'
+        )
+        conn.execute(
+            'INSERT INTO __table_metadata__ ("table", modulename, pks) VALUES (?, ?, ?)',
+            ("Persons", "tests._helper.Person", "not-json"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    db = DataBase(db_path)
+
+    assert "Persons" not in db._table_meta
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelname == "ERROR"
+    assert "Failed to load internal metadata" in caplog.records[0].message

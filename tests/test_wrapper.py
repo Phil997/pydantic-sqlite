@@ -1,4 +1,5 @@
 import os
+import sqlite3
 from pathlib import Path
 from unittest import mock
 from uuid import uuid4
@@ -24,6 +25,27 @@ def test_context_manager():
         with pytest.raises(RuntimeError):
             with handler:
                 ...  # re-entering the context manager should raise an error
+
+
+def test_close_on_exit(tmp_path: Path):
+    handler = FailSafeDataBase(str(tmp_path / "mytest"))
+    with handler as db:
+        db.add(TEST_TABLE_NAME, Person(uuid=str(uuid4()), name="unitest"))
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        handler._db._db.conn.execute("SELECT 1")
+
+
+def test_snapshot_saved_and_closed_on_exception(tmp_path: Path, sample_db: DataBase):
+    sample_db.save(str(tmp_path / TEST_DB_NAME))
+    handler = FailSafeDataBase(str(tmp_path / TEST_DB_NAME), snapshot_suffix="_snapshot.db")
+    with pytest.raises(KeyError):
+        with handler:
+            raise KeyError()
+    assert f"{TEST_DB_NAME[:-3]}_snapshot.db" in os.listdir(tmp_path)
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        handler._db._db.conn.execute("SELECT 1")
 
 
 def test_pass_kwargs(tmp_path: Path):

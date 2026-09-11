@@ -127,7 +127,7 @@ The following field types are supported and can be stored and loaded through a P
 | `set[T]` | Stored as JSON and reconstructed as a set |
 | `dict[K, V]` | Primitive values are stored as JSON |
 | `Enum` and `StrEnum` | The Enum value is stored and the Enum member is reconstructed |
-| Nested `BaseModel` | Requires a corresponding `foreign_tables` entry; see [Nested Models](advanced-usage.md#nested-models-with-foreign-keys) |
+| Nested `BaseModel` | Requires a `foreign_tables` entry; see [Nested Models](advanced-usage.md#nested-models-with-foreign-keys). Use `(table, pk)` tuples when the nested model's PK is not `"uuid"`. |
 
 `Any` is also supported for storage. Since it carries no concrete type information, an Enum stored through an `Any` field is loaded as its value rather than as an Enum member. Enum fields should therefore be explicitly typed when the Enum type must be preserved.
 
@@ -247,26 +247,55 @@ Note: deleting only removes rows from the specified table. Rows in foreign table
 
 ## Persisting to Disk
 
-By default, `DataBase()` creates an in-memory database. To save data to a file:
+There are two ways to work with a file-based database:
+
+### 1. File-backed database (recommended)
+
+Pass a filename (or `Path`) to `DataBase`. The database is opened directly, all changes are written to the file immediately and existing data (including table metadata) is loaded automatically:
 
 ```python
 from pydantic_sqlite import DataBase
 
-# Create a database backed by a file
 db = DataBase("my_database.db")
+
+# ... add and query data - everything is persisted automatically ...
+
+# Close the underlying connection when done
+db.close()
+```
+
+If the file already exists, its tables and metadata are hydrated on initialization, so previously stored models can be queried right away:
+
+```python
+db = DataBase("my_database.db")
+for person in db("Persons"):
+    print(person)
+```
+
+Note: `DataBase.close()` closes the underlying SQLite connection and can be called multiple times safely.
+
+### 2. In-memory database + save()/load()
+
+By default, `DataBase()` (no filename) creates an in-memory database. Use `save()` to dump it to a file and `load()` to read a file back into memory:
+
+```python
+from pydantic_sqlite import DataBase
+
+# In-memory database
+db = DataBase()
 
 # ... add and query data ...
 
 # Save to disk
 db.save("my_database.db")
-```
 
-Or load an existing database:
-
-```python
-db = DataBase("my_database.db")
-
-# The database file is automatically loaded if it exists
-for person in db("Persons"):
+# Later: load the file into a new in-memory database
+db2 = DataBase()
+db2.load("my_database.db")
+for person in db2("Persons"):
     print(person)
 ```
+
+Calling `save()` on an already file-backed database is a no-op: it only logs a warning that the data is already stored in the file.
+
+Note: When loading (or reopening) an existing database file, the Pydantic model classes are resolved by their module name. Make sure the models are defined in importable modules (or registered beforehand), otherwise the affected tables are skipped with a warning.

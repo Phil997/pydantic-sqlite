@@ -1,0 +1,59 @@
+name: Github Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+    paths: [pyproject.toml]
+
+jobs:
+  github_release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # prüfe ob die version in pyproject.toml höher ist als das letzte release
+
+      - name: Read version from pyproject.toml
+        id: version
+        run: |
+          VERSION=$(grep -m1 '^version = ' pyproject.toml | sed -E 's/version = "([^"]+)"/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Get latest release tag
+        id: latest
+        run: |
+          LATEST=$(gh release view --json tagName -q .tagName 2>/dev/null || echo "")
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compare versions
+        id: compare
+        run: |
+          OUT=$(python .github/scripts/compare_versions.py \
+            "${{ steps.version.outputs.version }}" \
+            "${{ steps.latest.outputs.latest }}")
+          echo "create=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Build release notes from PRs
+        if: steps.compare.outputs.create == 'true'
+        run: |
+          python .github/scripts/generate_release_notes.py \
+            "${{ steps.version.outputs.version }}" \
+            "${{ steps.latest.outputs.latest }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: ncipollo/release-action@v1
+        if: steps.compare.outputs.create == 'true'
+        with:
+          tag: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          commit: main
+          bodyFile: ${{ env.RUNNER_TEMP }}/release_notes.md
+          token: ${{ secrets.GITHUB_TOKEN }}

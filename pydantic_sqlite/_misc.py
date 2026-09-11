@@ -1,12 +1,15 @@
 import os
+from decimal import Decimal
 from enum import Enum
 from typing import Any, get_args
 
 
 def normalize_for_sqlite(value: Any) -> Any:
-    """Recursively replace Enum instances with SQLite-compatible values."""
+    """Recursively replace Enum and Decimal instances with SQLite-compatible values."""
     if isinstance(value, Enum):
         return value.value
+    if isinstance(value, Decimal):
+        return str(value)
     if isinstance(value, (list, tuple, set)):
         return [normalize_for_sqlite(item) for item in value]
     if isinstance(value, dict):

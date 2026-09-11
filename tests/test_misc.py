@@ -1,3 +1,4 @@
+from decimal import Decimal
 from enum import Enum
 from pathlib import Path
 from typing import Union
@@ -21,6 +22,12 @@ def test_normalize_for_sqlite_all_branches():
     assert set(normalize_for_sqlite({Status.ACTIVE, Status.INACTIVE})) == {"active", "inactive"}
     assert normalize_for_sqlite({Status.ACTIVE: [Status.INACTIVE]}) == {"active": ["inactive"]}
     assert normalize_for_sqlite(value) is value
+
+
+def test_normalize_for_sqlite_decimal():
+    assert normalize_for_sqlite(Decimal("25.5")) == "25.5"
+    assert normalize_for_sqlite([Decimal("1.10"), Decimal("2.20")]) == ["1.10", "2.20"]
+    assert normalize_for_sqlite({"price": Decimal("0.1")}) == {"price": "0.1"}
 
 
 def test_get_unique_filename_existing(tmp_path: Path):

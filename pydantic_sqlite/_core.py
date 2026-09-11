@@ -17,11 +17,16 @@ from sqlite_utils import Database as _Database
 
 from ._misc import convert_value_into_union_types, normalize_for_sqlite
 from ._utils import row_foreign_ids
+from .exceptions import ModelLoadError
+
+logger = logging.getLogger(__name__)
 
 SPECIALTYPE = [Any, Literal, Union]
 
 _METADATA_TABLE = "__table_metadata__"
 _LEGACY_METADATA_TABLE = "__basemodels__"
+
+_MODEL_REGISTRY: dict[str, ModelMetaclass] = {}
 
 
 class TableMetaInfo:
@@ -83,6 +88,7 @@ class DataBase:
     def __init__(
         self,
         filename_or_conn: Union[str, Path, sqlite3.Connection, None] = None,
+        on_error: Literal["warn", "raise", "skip"] = "warn",
         **kwargs,
     ) -> None:
         """
@@ -91,6 +97,8 @@ class DataBase:
         Args:
             filename_or_conn (Union[str, Path, sqlite3.Connection, None], optional):
                 The filename, Path, or sqlite3.Connection to use for the database. If None, uses in-memory DB.
+            on_error (Literal["warn", "raise", "skip"], optional): How to handle unresolvable model classes in metadata
+                One of "warn", "raise" (raise a ModelLoadError) or "skip" (ignore silently).
             **kwargs: Additional keyword arguments passed to sqlite_utils.Database.
         """
         self._table_meta = dict()
@@ -103,7 +111,7 @@ class DataBase:
         if _LEGACY_METADATA_TABLE in self._db.table_names():
             self._migrate_table_metadata()
         if _METADATA_TABLE in self._db.table_names():
-            self._load_internal_metadata()
+            self._load_internal_metadata(on_error=on_error)
 
     def __call__(self, tablename: str, **kwargs) -> Generator[BaseModel, None, None]:
         """
@@ -141,7 +149,7 @@ class DataBase:
             self,
             tablename: str,
             model: BaseModel,
-            foreign_tables: dict | None = None,
+            foreign_tables: dict[str, str | tuple[str, str]] | None = None,
             update_nested_models: bool = True,
             pk: str = "uuid"
     ) -> None:
@@ -151,7 +159,8 @@ class DataBase:
         Args:
             tablename (str): The name of the table.
             model (BaseModel): The model to be added, as a Pydantic BaseModel instance.
-            foreign_tables (dict, optional): A dictionary of foreign tables and their mappings.
+            foreign_tables (dict[str, str | tuple[str, str]], optional): A dictionary mapping field names
+                to foreign table names (str defaults PK to "uuid") or (table_name, pk) tuples.
             update_nested_models (bool, optional): Whether to update nested models if they already exist.
             pk (str, optional): The primary key field name. Defaults to "uuid".
 
@@ -186,7 +195,8 @@ class DataBase:
         )
 
         foreign_keys = []
-        for field_name, field_info in model.model_fields.items():
+        auto_created: set[str] = set()
+        for field_name, field_info in type(model).model_fields.items():
             field_value = getattr(model, field_name)
 
             if res := self._special_conversion(field_value):  # Special Insert with SQConfig.convert
@@ -198,8 +208,8 @@ class DataBase:
             elif get_origin(field_info.annotation) is list:
                 obj = typing.get_args(field_info.annotation)[0]
                 if inspect.isclass(obj) and issubclass(obj, BaseModel):
-                    _foreign_table_name = self._get_foreign_table_name(field_name, foreign_tables)
-                    _foreign_pk = self._primary_keys[_foreign_table_name]
+                    _foreign_table_name, _foreign_pk = self._resolve_foreign_table(
+                        field_name, foreign_tables, obj, auto_created)
                     foreign_keys.append((field_name, _foreign_table_name, _foreign_pk))
 
                     data_to_save[field_name] = [getattr(m, _foreign_pk) for m in field_value]
@@ -207,8 +217,8 @@ class DataBase:
             elif get_origin(field_info.annotation) is dict:
                 args = typing.get_args(field_info.annotation)
                 if inspect.isclass(args[1]) and issubclass(args[1], BaseModel):
-                    _foreign_table_name = self._get_foreign_table_name(field_name, foreign_tables)
-                    _foreign_pk = self._primary_keys[_foreign_table_name]
+                    _foreign_table_name, _foreign_pk = self._resolve_foreign_table(
+                        field_name, foreign_tables, args[1], auto_created)
                     foreign_keys.append((field_name, _foreign_table_name, _foreign_pk))
 
                     data_to_save[field_name] = json.dumps({
@@ -219,11 +229,8 @@ class DataBase:
                     })
 
             elif inspect.isclass(field_info.annotation) and issubclass(field_info.annotation, BaseModel):
-                # the model has got a field which is of type BaseModel, so this filed must be in a foreign table
-                # if the field is already in the Table it continues, but if is it not in the table it will add this
-                # to the table recursive call to self.add
-                _foreign_table_name = self._get_foreign_table_name(field_name, foreign_tables)
-                _foreign_pk = self._primary_keys[_foreign_table_name]
+                _foreign_table_name, _foreign_pk = self._resolve_foreign_table(
+                    field_name, foreign_tables, field_info.annotation, auto_created)
                 foreign_keys.append((field_name, _foreign_table_name, _foreign_pk))
 
                 nested_obj_ids = self._upsert_model_in_foreign_table(
@@ -234,7 +241,44 @@ class DataBase:
 
                 data_to_save[field_name] = nested_obj_ids
 
-        self._db[tablename].upsert(data_to_save, pk=pk, foreign_keys=foreign_keys)
+        for _table_name in auto_created:
+            self._ensure_physical_foreign_table(_table_name)
+        self._db[tablename].upsert(data_to_save, pk=pk, foreign_keys=foreign_keys, alter=True)
+
+    def add_index(
+        self,
+        tablename: str,
+        columns: list[str],
+        index_name: str | None = None,
+        unique: bool = False,
+        if_not_exists: bool = True,
+    ) -> None:
+        """
+        Creates an index on the given columns of the table.
+
+        Useful for speeding up queries that filter or sort by columns such as foreign keys or timestamps
+
+        Args:
+            tablename (str): The name of the table.
+            columns (list[str]): The columns to index.
+            index_name (str, optional): The name of the index. If not given, derives it from the tablename and columns
+            unique (bool): Whether the index should be unique. Defaults to False.
+            if_not_exists (bool): Only create the index if it does not exist yet.
+        """
+        if tablename not in self._table_meta:
+            raise KeyError(f"Can't find table '{tablename}' in Database")
+        self._db[tablename].create_index(
+            columns,
+            index_name=index_name,
+            unique=unique,
+            if_not_exists=if_not_exists,
+        )
+
+    def close(self) -> None:
+        """
+        Closes the underlying SQLite connection. This applies to file-based and in-memory databases alike.
+        """
+        self._db.close()
 
     def count_entries_in_table(self, tablename: str) -> int:
         """
@@ -294,6 +338,38 @@ class DataBase:
             self._db[tablename].delete(pk_value)
         return True
 
+    def delete_table(self, tablename: str, cascade: bool = False) -> None:
+        """
+        Deletes a table and all its data from the database. Tables referenced by other tables via
+        foreign keys must be deleted first if cascade is False.
+
+        Args:
+            tablename (str): The name of the table to delete.
+            cascade (bool, optional): If True, also deletes tables that reference this table via foreign keys
+
+        Raises:
+            KeyError: If the table does not exist, or is referenced by other tables.
+        """
+        if tablename not in self._table_meta:
+            raise KeyError(f"Can't find table '{tablename}' in Database")
+
+        _referencing = [
+            _tablename for _tablename in self._table_meta if _tablename != tablename
+            and any(_fk.other_table == tablename for _fk in self._db[_tablename].foreign_keys)
+        ]
+        if _referencing and not cascade:
+            raise KeyError(
+                f"Can't delete table '{tablename}' because it is referenced by: {_referencing}. "
+                "Delete those tables first or use cascade=True."
+            )
+        for _tablename in _referencing:
+            self.delete_table(_tablename, cascade=True)
+
+        self._db[tablename].drop()
+        del self._table_meta[tablename]
+        del self._primary_keys[tablename]
+        self._db[_METADATA_TABLE].delete(tablename)
+
     def delete_where(self, tablename: str, where: str, where_args: dict | None = None, cascade: bool = False) -> int:
         """
         Deletes all rows in the table matching the given where clause.
@@ -339,13 +415,15 @@ class DataBase:
         else:
             return self._build_basemodel_from_dict(model, entries[0], foreign_refs=foreign_refs, pk=_pk)
 
-    def load(self, filename: Union[str, Path]) -> None:
+    def load(self, filename: Union[str, Path], on_error: Literal["warn", "raise", "skip"] = "warn") -> None:
         """
         Loads all data from the given file and adds them to the in-memory database.
         Raises FileNotFoundError if the file does not exist.
 
         Args:
             filename (Union[str, Path]): The path to the file to load.
+            on_error (Literal["warn", "raise", "skip"], optional): How to handle unresolvable model classes in metadata
+                One of "warn", "raise" (raise a ModelLoadError) or "skip" (ignore silently).
         """
         if isinstance(filename, Path):
             filename = str(filename)
@@ -359,7 +437,7 @@ class DataBase:
         if _LEGACY_METADATA_TABLE in self._db.table_names():
             self._migrate_table_metadata()
         if _METADATA_TABLE in self._db.table_names():
-            self._load_internal_metadata()
+            self._load_internal_metadata(on_error=on_error)
 
     def save(self, filename: Union[str, Path], backup: bool = True, backup_suffix: str = ".backup") -> None:
         """
@@ -381,7 +459,7 @@ class DataBase:
         if isinstance(filename, Path):
             filename = str(filename)
         if self.filename != ":memory:":
-            logging.warning(f"database is persistent, already stored in a file: {self.filename}")
+            logger.warning(f"database is persistent, already stored in a file: {self.filename}")
             return
 
         if not filename.endswith(".db"):
@@ -402,7 +480,7 @@ class DataBase:
             copyfile(tmp_name, filename)
         except Exception:
             if backup:
-                logging.warning(f"saved the backup file under '{backup_file}'")
+                logger.warning(f"saved the backup file under '{backup_file}'")
             raise
 
     def _create_new_table(self, tablename: str, basemodel_cls: ModelMetaclass, pk: str, persist: bool = True) -> None:
@@ -419,6 +497,7 @@ class DataBase:
         _m = TableMetaInfo(table=tablename, basemodel_cls=basemodel_cls, pks=[pk])
         self._table_meta.update({tablename: _m})
         self._primary_keys.update({tablename: pk})
+        _MODEL_REGISTRY[_m.modulename] = basemodel_cls
 
         if persist:
             self._db[_METADATA_TABLE].upsert(_m.data(), pk="table")
@@ -480,14 +559,14 @@ class DataBase:
             d.update({field_name: data})
         return tablemodel.basemodel_cls(**d)
 
-    def _get_foreign_table_name(self, field_name: str, foreign_tables: dict) -> str:
+    def _get_foreign_table_name(self, field_name: str, foreign_tables: dict[str, str | tuple[str, str]]) -> str:
         """
         Searches in the dict 'foreign_tables' for the field_name and returns the matching tablename.
         If it is not found, raises KeyError.
 
         Args:
             field_name (str): The name of the field.
-            foreign_tables (dict): A dictionary of foreign tables and their mappings.
+            foreign_tables (dict[str, str | tuple[str, str]]): Foreign table mappings.
 
         Returns:
             str: The name of the foreign table.
@@ -497,29 +576,75 @@ class DataBase:
             msg = f"detect field of Type BaseModel, but can not find '{field_name}'"
             msg += f"in foreign_tables (Keys: {keys})"
             raise KeyError(msg) from None
-        else:
-            foreign_table_name = foreign_tables[field_name]
+        value = foreign_tables[field_name]
+        if isinstance(value, tuple):
+            return value[0]
+        return value
 
-        if foreign_table_name not in self._db.table_names():
-            msg = f"Can not add a model, which has a foreign Key '{foreign_tables}'"
-            msg += f" to a Table '{foreign_table_name}' which does not exists"
-            raise KeyError(msg)
-        return foreign_table_name
+    def _resolve_foreign_table(
+        self,
+        field_name: str,
+        foreign_tables: dict[str, str | tuple[str, str]],
+        model_cls: ModelMetaclass,
+        auto_created: set[str]
+    ) -> tuple[str, str]:
+        """
+        Resolves a foreign table for a nested field, auto-creating metadata if needed.
 
-    def _load_internal_metadata(self) -> None:
+        Args:
+            field_name (str): The name of the field.
+            foreign_tables (dict[str, str | tuple[str, str]]): Foreign table mappings.
+            model_cls (ModelMetaclass): The nested model class for the foreign table.
+            auto_created (set[str]): Set to add newly registered foreign table names to.
+
+        Returns:
+            tuple[str, str]: (table_name, primary_key_field_name).
+        """
+        table_name = self._get_foreign_table_name(field_name, foreign_tables)
+        if table_name in self._primary_keys:
+            return table_name, self._primary_keys[table_name]
+
+        value = foreign_tables[field_name]
+        pk = value[1] if isinstance(value, tuple) else "uuid"
+        self._create_new_table(tablename=table_name, basemodel_cls=model_cls, pk=pk)
+        auto_created.add(table_name)
+        return table_name, pk
+
+    def _ensure_physical_foreign_table(self, table_name: str) -> None:
+        """
+        Ensures the physical SQLite table exists for an auto-created foreign table.
+        Creates a bare table with just the PK column if it doesn't exist.
+
+        Args:
+            table_name (str): The name of the foreign table.
+        """
+        if table_name in self._db.table_names():
+            return
+        pk = self._primary_keys[table_name]
+        pk_annotation = self._table_meta[table_name].basemodel_cls.model_fields[pk].annotation
+        col_type = int if pk_annotation is int or pk_annotation is bool else str
+        self._db[table_name].create({pk: col_type}, pk=pk)
+
+    def _load_internal_metadata(self, on_error: Literal["warn", "raise", "skip"]) -> None:
         """
         Internal helper: Reads the metadata table and re-imports the Pydantic classes
         to populate _table_meta and _primary_keys.
+
+        Args:
+            on_error (Literal["warn", "raise", "skip"]): How to handle unresolvable model classes in the metadata.
+                One of "warn", "raise" (raise a ModelLoadError) or "skip" (ignore silently).
         """
         try:
             for model in self._db[_METADATA_TABLE].rows:
-                parts = model["modulename"].split(".")
-                classname = parts[-1]
-                modulename = ".".join(parts[:-1])
+                modulename = model["modulename"]
 
                 try:
-                    my_module = importlib.import_module(modulename)
-                    basemodel_cls = getattr(my_module, classname)
+                    basemodel_cls = _MODEL_REGISTRY.get(modulename)
+                    if basemodel_cls is None:
+                        parts = modulename.split(".")
+                        classname = parts[-1]
+                        module_name = ".".join(parts[:-1])
+                        basemodel_cls = getattr(importlib.import_module(module_name), classname)
 
                     # Register in memory without persisting to DB again
                     self._create_new_table(
@@ -528,10 +653,21 @@ class DataBase:
                         pk=json.loads(model["pks"])[0],
                         persist=False
                     )
-                except (ModuleNotFoundError, AttributeError) as e:
-                    logging.warning(f"Could not reload model for table '{model['table']}': {e}")
-        except Exception as e:
-            logging.error(f"Failed to load internal metadata: {e}")
+                except (ModuleNotFoundError, AttributeError) as ex:
+                    msg = (
+                        f"Could not reload model for table '{model['table']}': {ex}. "
+                        f"Make sure the model class '{modulename}' is importable "
+                        "or has been registered before loading.")
+                    if on_error == "raise":
+                        raise ModelLoadError(msg)
+                    elif on_error == "skip":
+                        continue
+                    else:
+                        logger.warning(msg)
+        except ModelLoadError:
+            raise
+        except Exception as exc:
+            logger.error(f"Failed to load internal metadata: {type(exc)} {str(exc)}")
 
     def _migrate_table_metadata(self) -> None:
         """
@@ -547,7 +683,7 @@ class DataBase:
         for legacy in legacy_rows:
             self._db[_METADATA_TABLE].upsert(dict(legacy), pk="table")
         self._db[_LEGACY_METADATA_TABLE].drop()
-        logging.debug(f"Migrated internal metadata table '{_LEGACY_METADATA_TABLE}' into '{_METADATA_TABLE}'")
+        logger.debug(f"Migrated internal metadata table '{_LEGACY_METADATA_TABLE}' into '{_METADATA_TABLE}'")
 
     def _upsert_model_in_foreign_table(
         self, field_value: typing.Any, foreign_table_name: str, update_nested_models: bool, pk: str
