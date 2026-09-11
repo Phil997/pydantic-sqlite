@@ -45,9 +45,12 @@ jobs:
         run: |
           python .github/scripts/generate_release_notes.py \
             "${{ steps.version.outputs.version }}" \
-            "${{ steps.latest.outputs.latest }}"
+            "${{ steps.latest.outputs.latest }}" \
+            --out "${{ runner.temp }}/release_notes.md"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: cat "${{ runner.temp }}/release_notes.md"
 
       - uses: ncipollo/release-action@v1
         if: steps.compare.outputs.create == 'true'
@@ -55,5 +58,5 @@ jobs:
           tag: ${{ steps.version.outputs.version }}
           name: ${{ steps.version.outputs.version }}
           commit: main
-          bodyFile: ${{ env.RUNNER_TEMP }}/release_notes.md
+          bodyFile: ${{ runner.temp }}/release_notes.md
           token: ${{ secrets.GITHUB_TOKEN }}
