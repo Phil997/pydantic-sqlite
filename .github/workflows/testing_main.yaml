@@ -1,12 +1,12 @@
-name: code_check
+name: Coverage Test Run
 
 on:
   push:
     branches: [main]
 
 jobs:
-  code_check:
-    name: 'Run Test for Covergae in main'
+  coverage_test_run:
+    name: 'Run Test for Coverage in main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
