@@ -236,6 +236,12 @@ class DataBase:
 
         self._db[tablename].upsert(data_to_save, pk=pk, foreign_keys=foreign_keys)
 
+    def close(self) -> None:
+        """
+        Closes the underlying SQLite connection. This applies to file-based and in-memory databases alike.
+        """
+        self._db.close()
+
     def count_entries_in_table(self, tablename: str) -> int:
         """
         Returns the number of models in the table.

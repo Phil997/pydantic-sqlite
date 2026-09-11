@@ -77,7 +77,10 @@ class FailSafeDataBase:
         if exc_type:
             snapshot_path = get_unique_filename(f"{self.dbname.with_suffix('')}{self.snapshot_suffix}")
             self._db.save(filename=snapshot_path)
-        return self._ctx.__exit__(exc_type, exc, tb)
+        try:
+            return self._ctx.__exit__(exc_type, exc, tb)
+        finally:
+            self._db.close()
 
     @contextmanager
     def _contextmanager(self) -> Generator[DataBase, None, None]:

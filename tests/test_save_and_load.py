@@ -156,7 +156,30 @@ def test_persistent_db_save(persistent_db):
         assert not os.path.exists("_backup.db")
 
     # Close the database connection before the test ends
-    persistent_db._db.conn.close()
+    persistent_db.close()
+
+
+def test_close(tmp_path: Path):
+    db = DataBase(filename_or_conn=str(tmp_path / TEST_DB_NAME))
+    db.close()
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        db._db.conn.execute("SELECT 1")
+
+
+def test_close_in_memory():
+    db = DataBase()
+    assert db.filename == ":memory:"
+    db.close()
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        db._db.conn.execute("SELECT 1")
+
+
+def test_close_idempotent(tmp_path: Path):
+    db = DataBase(filename_or_conn=str(tmp_path / TEST_DB_NAME))
+    db.close()
+    db.close()
 
 
 def test_init_hydrates_existing_metadata(tmp_path: Path):
