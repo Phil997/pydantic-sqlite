@@ -191,3 +191,40 @@ def test_delete_where_cascade():
     assert _count_rows(db, "Employees") == 0
     assert _count_rows(db, "Persons") == 0
     assert _row_exists(db, "Persons", "uuid", "p1") is False
+
+
+def test_delete_table_success():
+    db = DataBase()
+    db.add("Persons", Person(uuid="1234", name="Test User"))
+
+    db.delete_table("Persons")
+
+    assert "Persons" not in db._table_meta
+    assert "Persons" not in db._primary_keys
+    assert "Persons" not in db._db.table_names()
+    with pytest.raises(KeyError):
+        list(db("Persons"))
+
+
+def test_delete_table_not_existing():
+    db = DataBase()
+
+    with pytest.raises(KeyError, match="Can't find table 'Unknown' in Database"):
+        db.delete_table("Unknown")
+
+
+def test_delete_table_cascade():
+    db = DataBase()
+    person = Person(uuid="p1", name="unitest")
+    db.add("Persons", person)
+    db.add("Employees", Employee(uuid="e1", person=person), foreign_tables={"person": "Persons"})
+
+    with pytest.raises(KeyError, match="referenced"):
+        db.delete_table("Persons")
+
+    db.delete_table("Persons", cascade=True)
+
+    assert "Persons" not in db._table_meta
+    assert "Employees" not in db._table_meta
+    assert "Persons" not in db._db.table_names()
+    assert "Employees" not in db._db.table_names()

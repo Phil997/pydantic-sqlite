@@ -338,6 +338,38 @@ class DataBase:
             self._db[tablename].delete(pk_value)
         return True
 
+    def delete_table(self, tablename: str, cascade: bool = False) -> None:
+        """
+        Deletes a table and all its data from the database. Tables referenced by other tables via
+        foreign keys must be deleted first if cascade is False.
+
+        Args:
+            tablename (str): The name of the table to delete.
+            cascade (bool, optional): If True, also deletes tables that reference this table via foreign keys
+
+        Raises:
+            KeyError: If the table does not exist, or is referenced by other tables.
+        """
+        if tablename not in self._table_meta:
+            raise KeyError(f"Can't find table '{tablename}' in Database")
+
+        _referencing = [
+            _tablename for _tablename in self._table_meta if _tablename != tablename
+            and any(_fk.other_table == tablename for _fk in self._db[_tablename].foreign_keys)
+        ]
+        if _referencing and not cascade:
+            raise KeyError(
+                f"Can't delete table '{tablename}' because it is referenced by: {_referencing}. "
+                "Delete those tables first or use cascade=True."
+            )
+        for _tablename in _referencing:
+            self.delete_table(_tablename, cascade=True)
+
+        self._db[tablename].drop()
+        del self._table_meta[tablename]
+        del self._primary_keys[tablename]
+        self._db[_METADATA_TABLE].delete(tablename)
+
     def delete_where(self, tablename: str, where: str, where_args: dict | None = None, cascade: bool = False) -> int:
         """
         Deletes all rows in the table matching the given where clause.
