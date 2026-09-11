@@ -3,9 +3,13 @@ name: pypi_release
 on:
   release:
     types: [published]
+  workflow_run:
+    workflows: ["Github Release"]
+    types: [completed]
 
 jobs:
   pypi_release:
+    if: github.event_name == 'release' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
