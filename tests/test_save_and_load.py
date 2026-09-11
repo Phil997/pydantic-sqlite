@@ -146,10 +146,10 @@ def test_save_and_load_path(tmp_path: Path, sample_db: DataBase):
 def test_persistent_db_save(persistent_db):
     filename = persistent_db._db.conn.execute("PRAGMA database_list").fetchone()[2]
 
-    with mock.patch("logging.warning") as mock_warning:
+    with mock.patch("pydantic_sqlite._core.logger") as mock_logger:
         persistent_db.save(TEST_DB_NAME)
 
-        mock_warning.assert_called_once_with(
+        mock_logger.warning.assert_called_once_with(
             f"database is persistent, already stored in a file: {filename}"
         )
         # Verify no file operations were performed

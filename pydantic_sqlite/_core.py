@@ -19,6 +19,8 @@ from ._misc import convert_value_into_union_types, normalize_for_sqlite
 from ._utils import row_foreign_ids
 from .exceptions import ModelLoadError
 
+logger = logging.getLogger(__name__)
+
 SPECIALTYPE = [Any, Literal, Union]
 
 _METADATA_TABLE = "__table_metadata__"
@@ -425,7 +427,7 @@ class DataBase:
         if isinstance(filename, Path):
             filename = str(filename)
         if self.filename != ":memory:":
-            logging.warning(f"database is persistent, already stored in a file: {self.filename}")
+            logger.warning(f"database is persistent, already stored in a file: {self.filename}")
             return
 
         if not filename.endswith(".db"):
@@ -446,7 +448,7 @@ class DataBase:
             copyfile(tmp_name, filename)
         except Exception:
             if backup:
-                logging.warning(f"saved the backup file under '{backup_file}'")
+                logger.warning(f"saved the backup file under '{backup_file}'")
             raise
 
     def _create_new_table(self, tablename: str, basemodel_cls: ModelMetaclass, pk: str, persist: bool = True) -> None:
@@ -629,11 +631,11 @@ class DataBase:
                     elif on_error == "skip":
                         continue
                     else:
-                        logging.warning(msg)
+                        logger.warning(msg)
         except ModelLoadError:
             raise
         except Exception as exc:
-            logging.error(f"Failed to load internal metadata: {type(exc)} {str(exc)}")
+            logger.error(f"Failed to load internal metadata: {type(exc)} {str(exc)}")
 
     def _migrate_table_metadata(self) -> None:
         """
@@ -649,7 +651,7 @@ class DataBase:
         for legacy in legacy_rows:
             self._db[_METADATA_TABLE].upsert(dict(legacy), pk="table")
         self._db[_LEGACY_METADATA_TABLE].drop()
-        logging.debug(f"Migrated internal metadata table '{_LEGACY_METADATA_TABLE}' into '{_METADATA_TABLE}'")
+        logger.debug(f"Migrated internal metadata table '{_LEGACY_METADATA_TABLE}' into '{_METADATA_TABLE}'")
 
     def _upsert_model_in_foreign_table(
         self, field_value: typing.Any, foreign_table_name: str, update_nested_models: bool, pk: str
