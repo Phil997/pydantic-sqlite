@@ -10,6 +10,7 @@ keywords = [
     "pydantic",
     "sqlite-utils",
     "sqlite3",
+    "sqlite",
 ]
 dependencies = [
     "pydantic (>=2.1.0)",
