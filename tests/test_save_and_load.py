@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 from testfixtures import TempDirectory
 
-from pydantic_sqlite import DataBase
+from pydantic_sqlite import DataBase, ModelLoadError
 
 from ._helper import LENGTH, TEST_DB_NAME, TEST_TABLE_NAME, Address, Person
 
@@ -473,3 +473,58 @@ def test_load_prefers_registered_model(tmp_path: Path):
         assert isinstance(list(db("Persons"))[0], Person)
     finally:
         core._MODEL_REGISTRY.pop("some.module.Person", None)
+
+
+def test_load_on_error_skip(tmp_path: Path):
+    db_path = tmp_path / "on_error_skip.db"
+    _create_db_with_unregistered_metadata(db_path, "some.module.Person")
+
+    db = DataBase()
+    db.load(db_path, on_error="skip")
+    assert "Persons" not in db._table_meta
+
+
+def test_load_on_error_raise(tmp_path: Path):
+    db_path = tmp_path / "on_error_raise.db"
+    _create_db_with_unregistered_metadata(db_path, "some.module.Person")
+
+    db = DataBase()
+    with pytest.raises(ModelLoadError, match="Persons"):
+        db.load(db_path, on_error="raise")
+
+
+def test_load_on_error_warn(tmp_path: Path, caplog):
+    db_path = tmp_path / "on_error_warn.db"
+    _create_db_with_unregistered_metadata(db_path, "some.module.Person")
+
+    db = DataBase()
+    db.load(db_path, on_error="warn")
+
+    assert "Persons" not in db._table_meta
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelname == "WARNING"
+    assert "Could not reload model for table 'Persons'" in caplog.records[0].message
+
+
+def test_load_invalid_pks_logs_error(tmp_path: Path, caplog):
+    db_path = tmp_path / "invalid_pks.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("CREATE TABLE Persons (uuid TEXT PRIMARY KEY, name TEXT)")
+        conn.execute(
+            'CREATE TABLE __table_metadata__ ("table" TEXT, modulename TEXT, pks TEXT, PRIMARY KEY ("table"))'
+        )
+        conn.execute(
+            'INSERT INTO __table_metadata__ ("table", modulename, pks) VALUES (?, ?, ?)',
+            ("Persons", "tests._helper.Person", "not-json"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    db = DataBase(db_path)
+
+    assert "Persons" not in db._table_meta
+    assert len(caplog.records) == 1
+    assert caplog.records[0].levelname == "ERROR"
+    assert "Failed to load internal metadata" in caplog.records[0].message

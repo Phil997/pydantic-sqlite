@@ -17,6 +17,7 @@ from sqlite_utils import Database as _Database
 
 from ._misc import convert_value_into_union_types, normalize_for_sqlite
 from ._utils import row_foreign_ids
+from .exceptions import ModelLoadError
 
 SPECIALTYPE = [Any, Literal, Union]
 
@@ -85,6 +86,7 @@ class DataBase:
     def __init__(
         self,
         filename_or_conn: Union[str, Path, sqlite3.Connection, None] = None,
+        on_error: Literal["warn", "raise", "skip"] = "warn",
         **kwargs,
     ) -> None:
         """
@@ -93,6 +95,8 @@ class DataBase:
         Args:
             filename_or_conn (Union[str, Path, sqlite3.Connection, None], optional):
                 The filename, Path, or sqlite3.Connection to use for the database. If None, uses in-memory DB.
+            on_error (Literal["warn", "raise", "skip"], optional): How to handle unresolvable model classes in metadata
+                One of "warn", "raise" (raise a ModelLoadError) or "skip" (ignore silently).
             **kwargs: Additional keyword arguments passed to sqlite_utils.Database.
         """
         self._table_meta = dict()
@@ -105,7 +109,7 @@ class DataBase:
         if _LEGACY_METADATA_TABLE in self._db.table_names():
             self._migrate_table_metadata()
         if _METADATA_TABLE in self._db.table_names():
-            self._load_internal_metadata()
+            self._load_internal_metadata(on_error=on_error)
 
     def __call__(self, tablename: str, **kwargs) -> Generator[BaseModel, None, None]:
         """
@@ -377,13 +381,15 @@ class DataBase:
         else:
             return self._build_basemodel_from_dict(model, entries[0], foreign_refs=foreign_refs, pk=_pk)
 
-    def load(self, filename: Union[str, Path]) -> None:
+    def load(self, filename: Union[str, Path], on_error: Literal["warn", "raise", "skip"] = "warn") -> None:
         """
         Loads all data from the given file and adds them to the in-memory database.
         Raises FileNotFoundError if the file does not exist.
 
         Args:
             filename (Union[str, Path]): The path to the file to load.
+            on_error (Literal["warn", "raise", "skip"], optional): How to handle unresolvable model classes in metadata
+                One of "warn", "raise" (raise a ModelLoadError) or "skip" (ignore silently).
         """
         if isinstance(filename, Path):
             filename = str(filename)
@@ -397,7 +403,7 @@ class DataBase:
         if _LEGACY_METADATA_TABLE in self._db.table_names():
             self._migrate_table_metadata()
         if _METADATA_TABLE in self._db.table_names():
-            self._load_internal_metadata()
+            self._load_internal_metadata(on_error=on_error)
 
     def save(self, filename: Union[str, Path], backup: bool = True, backup_suffix: str = ".backup") -> None:
         """
@@ -585,10 +591,14 @@ class DataBase:
         col_type = int if pk_annotation is int or pk_annotation is bool else str
         self._db[table_name].create({pk: col_type}, pk=pk)
 
-    def _load_internal_metadata(self) -> None:
+    def _load_internal_metadata(self, on_error: Literal["warn", "raise", "skip"]) -> None:
         """
         Internal helper: Reads the metadata table and re-imports the Pydantic classes
         to populate _table_meta and _primary_keys.
+
+        Args:
+            on_error (Literal["warn", "raise", "skip"]): How to handle unresolvable model classes in the metadata.
+                One of "warn", "raise" (raise a ModelLoadError) or "skip" (ignore silently).
         """
         try:
             for model in self._db[_METADATA_TABLE].rows:
@@ -609,13 +619,21 @@ class DataBase:
                         pk=json.loads(model["pks"])[0],
                         persist=False
                     )
-                except (ModuleNotFoundError, AttributeError) as e:
-                    logging.warning(
-                        f"Could not reload model for table '{model['table']}': {e}. "
+                except (ModuleNotFoundError, AttributeError) as ex:
+                    msg = (
+                        f"Could not reload model for table '{model['table']}': {ex}. "
                         f"Make sure the model class '{modulename}' is importable "
                         "or has been registered before loading.")
-        except Exception as e:
-            logging.error(f"Failed to load internal metadata: {e}")
+                    if on_error == "raise":
+                        raise ModelLoadError(msg)
+                    elif on_error == "skip":
+                        continue
+                    else:
+                        logging.warning(msg)
+        except ModelLoadError:
+            raise
+        except Exception as exc:
+            logging.error(f"Failed to load internal metadata: {type(exc)} {str(exc)}")
 
     def _migrate_table_metadata(self) -> None:
         """
